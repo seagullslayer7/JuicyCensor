@@ -20,13 +20,21 @@ JuicyCensor automatically detects profane words and phrases, creates a censored 
 
 ## Main Application
 
-*(Insert screenshot here)*
+![Main Application](images/main_app.png)
+
+---
+
+## Processing
+
+JuicyCensor automatically analyzes the selected video, detects profanity using WhisperX, generates a censorship report, and creates a censored copy while preserving the original file.
+
+![Processing Complete](images/processing_complete.png)
 
 ---
 
 ## Review Application
 
-*(Insert screenshot here)*
+![Review Application](images/review_app.png)
 
 ---
 
