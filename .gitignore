@@ -1,0 +1,10 @@
+__pycache__/
+venv/
+cache/
+logs/
+outputs/
+build/
+dist/
+*.spec
+*.pyc
+Thumbs.db

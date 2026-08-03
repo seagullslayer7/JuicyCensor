@@ -1,0 +1,17 @@
+{
+  "model": "large-v3",
+  "language": "en",
+  "device": "cuda",
+  "compute_type": "float16",
+  "batch_size": 8,
+  "censor_mode": "continuous_beep",
+  "beep_file": "beep.mp3",
+  "beep_frequency": 1000,
+  "beep_volume": 0.8,
+  "pulse_on": 0.22,
+  "pulse_off": 0.08,
+  "pre_padding": 0.08,
+  "post_padding": 0.12,
+  "minimum_censor_duration": 0.5,
+  "merge_gap": 0.1
+}
