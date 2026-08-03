@@ -148,14 +148,28 @@ def transcribe_and_align(
         print(f"Using cached WhisperX alignment: {aligned_cache_path.name}")
         return json.loads(aligned_cache_path.read_text(encoding="utf-8"))
 
-    device = config.get("device", "cuda")
+    device = config.get("device", "auto")
     compute_type = config.get("compute_type", "float16")
     model_name = config.get("model", "large-v3")
     language = config.get("language", "en")
     batch_size = int(config.get("batch_size", 8))
 
-    if device == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("CUDA was requested, but PyTorch cannot access the GPU.")
+    if device == "auto":
+        if torch.cuda.is_available():
+            device = "cuda"
+            print("CUDA detected. Using GPU.")
+        else:
+            device = "cpu"
+            compute_type = "int8"
+            print("CUDA not available. Using CPU.")
+
+    elif device == "cpu":
+        compute_type = "int8"
+
+    elif device == "cuda" and not torch.cuda.is_available():
+        print("CUDA requested but unavailable. Falling back to CPU.")
+        device = "cpu"
+        compute_type = "int8"
 
     print(f"Loading WhisperX {model_name} on {device} ({compute_type})...")
     model = whisperx.load_model(

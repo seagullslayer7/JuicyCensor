@@ -1,7 +1,7 @@
 {
   "model": "large-v3",
   "language": "en",
-  "device": "cuda",
+  "device": "auto",
   "compute_type": "float16",
   "batch_size": 8,
   "censor_mode": "continuous_beep",
