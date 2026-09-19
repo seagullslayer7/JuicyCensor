@@ -1,393 +1,114 @@
-# JuicyCensor
+# JuicyCensor 2.0
 
-**Version 1.0.0**
+**Review the Juice.** A Windows desktop app that finds words and phrases in videos,
+lets you review their timing, and exports a censored copy.
 
-GPU-accelerated video profanity censor using **WhisperX**, **forced word alignment**, and **FFmpeg**.
+## Download
 
-JuicyCensor automatically detects profane words and phrases, creates a censored copy of your video, and includes a review application for correcting missed detections before rerendering.
+Open [GitHub Releases](https://github.com/seagullslayer7/JuicyCensor/releases/latest)
+and expand **Assets**:
 
----
+- **JuicyCensor-2.0.0-Windows-x64-Setup.exe** — recommended. Choose the installation
+  folder, optionally create a desktop shortcut, and launch the app.
+- **JuicyCensor-2.0.0-Windows-x64-Portable.zip** — extract the entire ZIP into a
+  writable folder and open **JuicyCensor.exe**. Keep the folder together.
+- **SHA256SUMS.txt** — checksums for the release downloads.
 
-## Supported Platform
+GitHub's automatic **Source code** ZIP is for developers; it is not the portable app.
+The installer and portable ZIP require internet for first-run runtime/model setup.
+They do not include several gigabytes of processing packages and models.
 
-- Windows 10
-- Windows 11
-- Python 3.12
+## First launch
 
----
+The app asks before downloading its private processing environment. Choose:
 
-# Screenshots
+- **AMD / Intel / CPU** for Vulkan speech transcription or CPU processing.
+- **NVIDIA CUDA** for NVIDIA-accelerated speech transcription. It is a larger download.
 
-## Main Application
+Both choices support hardware video export when the driver and GPU support it.
+Leave **Download starter English models now** selected for the quickest start.
+Setup installs private Python 3.12.14, hash-pinned processing packages, FFmpeg 7.1.1,
+and whisper.cpp Vulkan 1.8.4. It does not require you to install Python, Git,
+Visual Studio or the CUDA Toolkit, and does not modify system Python or PATH.
 
-![Main Application](images/main_app.png)
+Allow several GB of free space (more for CUDA and larger models). Use a folder your
+Windows account can write to. Keep your graphics driver current using the GPU
+manufacturer's installer. Drivers are not installed automatically.
 
----
+Use **Runtime setup** to retry an interrupted setup, repair packages, or switch profiles.
+When starter models are skipped, selecting a model can require a later download.
+Models larger than the included `base.en` starter model can improve detection.
 
-## Processing
+## Review and censor
 
-JuicyCensor automatically analyzes the selected video, detects profanity using WhisperX, generates a censorship report, and creates a censored copy while preserving the original file.
+1. Add or drag videos into the queue. Configure words/phrases in **Settings**.
+2. Choose **Analyze video** or **Analyze queue**. Review the detected regions.
+3. Use playback icons, adjustable skip buttons, preview volume, and the speed slider.
+4. Zoom with the magnifiers or mouse wheel; pan the timeline or choose **Fit**.
+5. Click the scissors at a selection start. Use **Set censor**, **End censor** and
+   **Cancel** to mark a region. Start/End fields use `HH:MM:SS.mmm`.
+6. Choose a censor style and export. Detection can miss words; review before sharing.
 
-![Processing Complete](images/processing_complete.png)
+Hover over controls for explanations. Reviews save automatically. Preview plays the
+original audio; censoring is applied in the exported file. Preview speed and volume
+do not change the export. Original media is never overwritten.
 
----
+## Settings and export
 
-## Review Application
+**Processing:** Automatic prefers CUDA, then Vulkan, then CPU. Explicit unavailable
+backends report an error. Vulkan uses the GPU for transcription and CPU for alignment.
+The starter `.en` models are English-only; choose a multilingual model for other languages.
 
-![Review Application](images/review_app.png)
+**Export:** Choose a destination with Browse, filename spacing, MP4 or Matroska,
+video/audio encoders, quality, a 480p–4K resolution limit, frame rate and encoding speed.
+Changing an individual option switches the preset to Custom. Changes apply to the next
+export without reanalyzing. Resolution limits preserve aspect ratio and do not upscale.
 
----
+- **Copy original video** preserves its encoded video stream, resolution and frame rate.
+- **Automatic encoder** tests NVIDIA H.264, AMD H.264, Intel H.264, then CPU H.264 against
+  the chosen output settings. Manual HEVC and NVIDIA AV1 choices are also available;
+  hardware availability varies. Explicit unavailable choices report an error.
+- **Original audio quality** targets the source bitrate when reported between 8 and
+  512 kbps; otherwise it uses 192 kbps. Censoring re-encodes audio, so this is not lossless.
+- AAC works with MP4 and Matroska. Opus selects Matroska automatically. MP4 here is
+  standard MP4, not OBS Hybrid MP4. HEVC/AV1 playback requires a compatible player.
 
-# Features
+Speech-analysis hardware and export encoders are independent settings.
 
-- GPU-accelerated WhisperX transcription
-- Word-level forced alignment
-- Automatic profanity detection
-- Continuous, pulse, custom beep, and mute censor modes
-- Manual review and correction GUI
-- Preview individual censor regions before rendering
-- Add manual censor regions for missed dialogue
-- Cached transcriptions for fast rerenders
-- Works with long videos
-- Generates censorship reports
-- Drag-and-drop video support
+## Requirements and support
 
----
+- 64-bit Windows 10 (1809+) or Windows 11.
+- An up-to-date graphics driver for hardware acceleration; CPU processing is available.
+- Internet for initial setup and new model downloads; processing runs locally afterward.
 
-# Requirements
+Tested locally on an NVIDIA RTX 5060 Ti and AMD integrated Radeon graphics. RX 9060 XT
+is a target device but has not been physically tested. Do not assume identical speed
+or support across all GPUs. See [VALIDATION.md](VALIDATION.md) for test coverage.
 
-Before using JuicyCensor, install:
+The release is not code-signed; Windows may show an unknown-publisher warning. Verify
+the download's checksum against SHA256SUMS.txt on the release page.
 
-- Python **3.12.x**
-- FFmpeg (must be available in your system PATH)
+## Files, updates and uninstalling
 
-Optional (recommended):
+The chosen application folder contains its configuration, word lists, private runtime,
+models, caches and logs. The default export folder is `outputs/censored` inside it;
+Settings can choose another destination. Reports remain under `outputs/reports`.
 
-- NVIDIA GPU with CUDA-compatible PyTorch for significantly faster transcription
+Installer upgrades preserve existing config and word lists. Uninstall removes packaged
+application files and shortcuts; downloaded runtime/models, user settings, caches,
+reports and exports are retained. Remove those manually only if you no longer need them.
+For the ZIP distribution, close the app and move the entire extracted folder together.
 
-Git is only required if cloning the repository.
+If something fails, check `logs/setup.log` for installation and `logs/last-job.log` for
+processing. Report issues at [GitHub Issues](https://github.com/seagullslayer7/JuicyCensor/issues)
+with your GPU, driver, selected model/encoder, and relevant log lines. Avoid posting
+private video content or sensitive paths.
 
----
+## Development and releases
 
-# Installation
+See [BUILDING.md](BUILDING.md). Dependency updates are resolved and tested before release;
+setup deliberately installs pinned compatible versions instead of blindly installing
+the newest packages. WhisperX 3.8.6 requires PyTorch 2.8.x.
 
-Clone the repository:
-
-```bash
-git clone https://github.com/seagullslayer7/JuicyCensor.git
-cd JuicyCensor
-```
-
-Create a virtual environment:
-
-```bash
-python -m venv venv
-```
-
-Activate it:
-
-### Windows
-
-```powershell
-venv\Scripts\activate
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Verify your installation:
-
-```text
-setup_check.bat
-```
-
-If the setup check passes, launch JuicyCensor:
-
-```text
-run.bat
-```
-
-or
-
-```text
-JuicyCensor.exe
-```
-
-> **Note:** FFmpeg must be installed and available in your system PATH before running JuicyCensor.
-
----
-
-# Building from Source
-
-To rebuild the Windows executables:
-
-Main application
-
-```text
-build_launcher_exe.bat
-```
-
-Review application
-
-```text
-build_review_exe.bat
-```
-
-To remove previous PyInstaller build artifacts:
-
-```text
-clean_build_artifacts.bat
-```
-
----
-
-# Main Applications
-
-## JuicyCensor.exe
-
-The primary application used to censor videos.
-
-You can:
-
-- Double-click to choose a video
-- Drag and drop a video onto the executable
-
-During processing JuicyCensor will:
-
-1. Extract audio
-2. Transcribe using WhisperX
-3. Perform forced alignment
-4. Detect banned words and phrases
-5. Generate a censorship report
-6. Render a censored MP4
-
----
-
-## JuicyCensor Review.exe
-
-The review application lets you inspect every detected censor event before rendering.
-
-You can:
-
-- Browse detected regions
-- Preview individual events
-- Add manual censor regions
-- Edit incorrect timestamps
-- Save manual overrides
-- Render an updated censored video without retranscribing
-
----
-
-# First-Time Processing
-
-The first run performs the expensive work.
-
-1. Open a video with JuicyCensor.
-2. WhisperX extracts audio.
-3. WhisperX generates a transcript.
-4. Forced alignment assigns timestamps to every word.
-5. Results are cached.
-
-Future renders of the same video reuse the cached alignment, making rerenders much faster.
-
----
-
-# Review Workflow
-
-1. Open **JuicyCensor Review.exe**
-2. Select the original source video.
-3. Click **Load Review**.
-4. Select a detected event.
-5. Preview the region if desired.
-6. For missed dialogue, click **Add Manual Region**.
-7. Enter timestamps using either:
-
-```
-00:59:40.303
-```
-
-or
-
-```
-3580.303
-```
-
-8. Apply the manual region.
-9. Save overrides.
-10. Click **Render Censored Video**.
-
-Manual overrides are stored separately from WhisperX alignments and remain available when rerendering.
-
----
-
-# Editing Word Lists
-
-Single-word entries belong in:
-
-```
-banned_words.txt
-```
-
-Examples:
-
-```
-rape
-nigga
-faggot
-```
-
-Multi-word phrases belong in:
-
-```
-banned_phrases.txt
-```
-
-Examples:
-
-```
-kill yourself
-piece of shit
-son of a bitch
-```
-
-After editing either file, simply rerun the same source video.
-
-The cached alignment will be reused.
-
----
-
-# Censor Modes
-
-Configure the censor style in:
-
-```
-config.json
-```
-
-Example:
-
-```json
-"censor_mode": "continuous_beep"
-```
-
-Available modes:
-
-- continuous_beep
-- pulse_beep
-- custom_beep
-- mute
-
----
-
-# Output
-
-Censored videos:
-
-```
-outputs/censored
-```
-
-Reports:
-
-```
-outputs/reports
-```
-
-Logs:
-
-```
-logs
-```
-
----
-
-# Cache
-
-JuicyCensor caches:
-
-- extracted WAV audio
-- WhisperX transcripts
-- forced alignments
-
-This allows repeated renders without retranscribing the video.
-
-Only clear the cache when you intentionally want to regenerate everything.
-
-Use:
-
-```
-clean_cache.bat
-```
-
----
-
-# Project Structure
-
-```
-JuicyCensor/
-
-JuicyCensor.exe
-JuicyCensor Review.exe
-
-JuicyCensor.py
-JuicyCensorReview.py
-
-config.json
-
-banned_words.txt
-banned_phrases.txt
-
-beep.mp3
-
-cache/
-logs/
-outputs/
-```
-
----
-
-# Version History
-
-## Version 1.0.0
-
-Initial public release.
-
-Features include:
-
-- Automatic profanity detection
-- WhisperX forced alignment
-- GPU acceleration
-- Review application
-- Manual censor regions
-- Cached rerenders
-- Multiple censor modes
-- Report generation
-
----
-
-## License
-
-This project is licensed under the MIT License. See the LICENSE file for details.
-
----
-
-# Acknowledgements
-
-Built using:
-
-- WhisperX
-- Faster-Whisper
-- FFmpeg
-- PyTorch
-- Tkinter
-
-## Development
-
-JuicyCensor was designed and developed by **seagullslayer7**.
-
-GitHub: https://github.com/seagullslayer7
-
-OpenAI ChatGPT was used as a programming assistant for brainstorming, debugging, code generation, and documentation during development.
+Application code is MIT licensed. Bundled/downloaded components have their own licenses:
+see [THIRD-PARTY.md](THIRD-PARTY.md) and the `licenses` folder.

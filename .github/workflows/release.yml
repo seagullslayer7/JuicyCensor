@@ -1,0 +1,50 @@
+name: Build Windows release
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+      - name: Install GUI build dependencies
+        run: python -m pip install PyInstaller==6.21.0 -r requirements-ui.txt
+      - name: Fetch verified build helpers
+        shell: python
+        run: |
+          import hashlib, json, pathlib, urllib.request, zipfile, subprocess
+          root = pathlib.Path.cwd()
+          manifest = json.loads((root/'release-manifest.json').read_text())
+          urllib.request.urlretrieve('https://github.com/astral-sh/uv/releases/download/0.12.17/uv-x86_64-pc-windows-msvc.zip', 'uv.zip')
+          with zipfile.ZipFile('uv.zip') as z:
+              name = next(n for n in z.namelist() if n.endswith('uv.exe'))
+              data = z.read(name)
+          assert hashlib.sha256(data).hexdigest() == manifest['uv_sha256']
+          (root/'bootstrap-tools').mkdir(exist_ok=True)
+          (root/'bootstrap-tools/uv.exe').write_bytes(data)
+          urllib.request.urlretrieve('https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe', 'inno.exe')
+          assert hashlib.sha256(pathlib.Path('inno.exe').read_bytes()).hexdigest() == '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f'
+          subprocess.run([str(root/'inno.exe'), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/PORTABLE=1', '/NOICONS', '/DIR='+str(root/'inno')], check=True)
+      - name: Build distributions
+        run: python build_release.py --iscc inno/ISCC.exe --output release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JuicyCensor-Windows-release
+          path: |
+            release/*Setup.exe
+            release/*.zip
+            release/SHA256SUMS.txt
+      - name: Create draft release for tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $assets = Get-ChildItem release -File | Where-Object { $_.Extension -in '.exe', '.zip' -or $_.Name -eq 'SHA256SUMS.txt' } | ForEach-Object FullName
+          gh release create $env:GITHUB_REF_NAME @assets --verify-tag --draft --title "JuicyCensor $env:GITHUB_REF_NAME" --notes-file RELEASE-NOTES.md

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JuicyCensor v1.0.0
+JuicyCensor v2.0.0
 
 Uses cached WhisperX forced-alignment when available, then creates a new
 censored MP4. The original video is never modified.
@@ -28,8 +28,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-import torch
-import whisperx
+from runtime_paths import configure_runtime
+
+configure_runtime()
+
 
 PROJECT_DIR = Path(__file__).resolve().parent
 
@@ -139,79 +141,9 @@ def extract_audio(video: Path, audio_path: Path) -> None:
     ])
 
 
-def transcribe_and_align(
-    audio_path: Path,
-    config: dict[str, Any],
-    aligned_cache_path: Path,
-) -> dict[str, Any]:
-    if aligned_cache_path.exists():
-        print(f"Using cached WhisperX alignment: {aligned_cache_path.name}")
-        return json.loads(aligned_cache_path.read_text(encoding="utf-8"))
-
-    device = config.get("device", "auto")
-    compute_type = config.get("compute_type", "float16")
-    model_name = config.get("model", "large-v3")
-    language = config.get("language", "en")
-    batch_size = int(config.get("batch_size", 8))
-
-    if device == "auto":
-        if torch.cuda.is_available():
-            device = "cuda"
-            print("CUDA detected. Using GPU.")
-        else:
-            device = "cpu"
-            compute_type = "int8"
-            print("CUDA not available. Using CPU.")
-
-    elif device == "cpu":
-        compute_type = "int8"
-
-    elif device == "cuda" and not torch.cuda.is_available():
-        print("CUDA requested but unavailable. Falling back to CPU.")
-        device = "cpu"
-        compute_type = "int8"
-
-    print(f"Loading WhisperX {model_name} on {device} ({compute_type})...")
-    model = whisperx.load_model(
-        model_name, device, compute_type=compute_type, language=language
-    )
-
-    print("Loading extracted WAV...")
-    audio = whisperx.load_audio(str(audio_path))
-
-    print("Transcribing...")
-    result = model.transcribe(
-        audio, batch_size=batch_size, language=language, print_progress=True
-    )
-
-    del model
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-    detected_language = result.get("language") or language
-    print(f"Loading alignment model for '{detected_language}'...")
-    align_model, metadata = whisperx.load_align_model(
-        language_code=detected_language, device=device
-    )
-
-    print("Performing forced alignment...")
-    aligned = whisperx.align(
-        result["segments"], align_model, metadata, audio, device,
-        return_char_alignments=False, print_progress=True,
-    )
-    aligned["language"] = detected_language
-
-    del align_model, audio
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-    aligned_cache_path.write_text(
-        json.dumps(aligned, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    print(f"Saved alignment cache: {aligned_cache_path}")
-    return aligned
+def transcribe_and_align(audio_path: Path, config: dict[str, Any], aligned_cache_path: Path) -> dict[str, Any]:
+    from transcription import transcribe_and_align as transcribe
+    return transcribe(audio_path, config, aligned_cache_path)
 
 
 def flatten_words(aligned: dict[str, Any]) -> list[Word]:
@@ -451,9 +383,96 @@ def build_custom_beep_filter(
     return ";".join(parts)
 
 
+def encoder_options(encoder: str, quality: str, preset: str) -> list[str]:
+    options = {
+        'libx264': ['-crf', quality, '-preset', preset],
+        'h264_nvenc': ['-preset', {'fast':'p1', 'medium':'p4', 'slow':'p7'}[preset], '-rc', 'vbr', '-cq', quality, '-b:v', '0'],
+        'h264_amf': ['-quality', {'fast':'speed', 'medium':'balanced', 'slow':'quality'}[preset], '-rc', 'cqp', '-qp_i', quality, '-qp_p', quality],
+        'h264_qsv': ['-preset', preset, '-global_quality', quality]}
+    template = 'libx264' if encoder == 'libx265' else 'h264_' + encoder.split('_')[-1] if encoder.startswith(('hevc_', 'av1_')) else encoder
+    return ['-c:v', encoder, *options[template], '-pix_fmt', 'yuv420p']
+
+
+def select_export_encoder(requested: str, quality: str, preset: str, video=None, transforms=()) -> str:
+    candidates = ['h264_nvenc', 'h264_amf', 'h264_qsv', 'libx264'] if requested == 'auto' else [requested]
+    for encoder in candidates:
+        if encoder not in ('h264_nvenc', 'h264_amf', 'h264_qsv', 'libx264', 'hevc_nvenc', 'hevc_amf', 'hevc_qsv', 'av1_nvenc', 'libx265'):
+            raise ValueError('Unsupported export encoder')
+        source = ['-i', str(video)] if video else ['-f', 'lavfi', '-i', 'color=size=640x480:rate=30']
+        command = ['ffmpeg', '-hide_banner', '-loglevel', 'error', *source,
+                   '-map', '0:v:0', '-an', '-frames:v', '3',
+                   *encoder_options(encoder, quality, preset), *transforms, '-f', 'null', '-']
+        try:
+            probe = subprocess.run(command, capture_output=True, text=True, timeout=20,
+                                   creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            if probe.returncode == 0:
+                print(f'Export encoder: {encoder}', flush=True)
+                return encoder
+            detail = probe.stderr[-600:]
+        except subprocess.TimeoutExpired:
+            detail = 'Encoder initialization timed out.'
+        if requested != 'auto':
+            raise RuntimeError(f'{encoder} is unavailable. Choose Automatic or CPU in Settings. {detail}')
+    raise RuntimeError('No usable export encoder was found. Check the FFmpeg installation.')
+
+
+def original_audio_bitrate(video) -> str:
+    if video is not None:
+        result = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'a:0',
+                                 '-show_entries', 'stream=bit_rate', '-of', 'json', str(video)],
+                                check=True, capture_output=True, text=True, timeout=20,
+                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        streams = json.loads(result.stdout).get('streams', [])
+        value = str(streams[0].get('bit_rate', '')) if streams else ''
+        if value.isdigit() and 8000 <= int(value) <= 512000:
+            print(f'Original audio bitrate target: {value} bits/s (audio is re-encoded).', flush=True)
+            return value
+    print('Source audio bitrate unavailable or outside 8–512 kbps; using 192 kbps.', flush=True)
+    return '192000'
+
+
+def export_encoding_args(config: dict[str, Any], video=None) -> list[str]:
+    mode = config.get('export_quality', 'original')
+    if mode not in ('original', 'high', 'balanced', 'small', 'custom'):
+        raise ValueError('Unsupported export preset')
+    bitrate = 'original' if mode == 'original' else str(config.get('export_audio_bitrate', '192'))
+    if bitrate not in ('original', '128', '192', '256', '320'):
+        raise ValueError('Unsupported export audio bitrate')
+    requested = config.get('export_encoder', 'copy' if mode == 'original' else 'auto')
+    resolution = config.get('export_resolution', 'original')
+    fps = str(config.get('export_fps', 'original'))
+    if requested == 'copy':
+        if resolution != 'original' or fps != 'original':
+            raise ValueError('Video copy requires original resolution and frame rate. Choose an encoder.')
+        video_args = ['-c:v', 'copy']
+    else:
+        quality = str(config.get('export_video_quality', {'high':'18', 'small':'28'}.get(mode, '23')))
+        preset = config.get('export_preset', 'fast')
+        sizes = {'2160p': (3840, 2160), '1440p': (2560, 1440), '1080p': (1920, 1080), '720p': (1280, 720), '480p': (854, 480)}
+        if quality not in ('18','23','28') or preset not in ('fast','medium','slow') or resolution not in ('original', *sizes) or fps not in ('original','24','30','60'):
+            raise ValueError('Unsupported export quality, resolution, frame rate or speed')
+        transforms = []
+        if resolution != 'original':
+            width, height = sizes[resolution]
+            transforms += ['-vf', f"scale=w='min({width},iw)':h='min({height},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2"]
+        else:
+            transforms += ['-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2']
+        if fps != 'original':
+            transforms += ['-r', fps]
+        encoder = select_export_encoder(requested, quality, preset, video, transforms)
+        video_args = encoder_options(encoder, quality, preset) + transforms
+    audio_encoder = config.get('export_audio_encoder', 'aac')
+    if audio_encoder not in ('aac', 'libopus'):
+        raise ValueError('Unsupported audio encoder')
+    if audio_encoder == 'libopus' and config.get('export_format', 'mp4') != 'mkv':
+        raise ValueError('Choose Matroska for Opus audio')
+    target = original_audio_bitrate(video) if bitrate == 'original' else bitrate + 'k'
+    return video_args + ['-c:a', audio_encoder, '-b:a', target]
+
+
 def create_censored_video(
     video: Path, beep: Path, output: Path,
-    events: list[Event], config: dict[str, Any]
+    events: list[Event], config: dict[str, Any], progress=None
 ) -> None:
     total = probe_duration(video)
     mode = str(config.get("censor_mode", "continuous_beep")).lower()
@@ -494,10 +513,23 @@ def create_censored_video(
     command += [
         "-filter_complex_script", str(filter_script),
         "-map", "0:v:0", "-map", "[outa]",
-        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-        "-movflags", "+faststart", "-shortest", str(output),
+        *export_encoding_args(config, video),
+        *(["-movflags", "+faststart"] if output.suffix.lower() == ".mp4" else []),
+        "-shortest", str(output),
     ]
-    run(command)
+    if progress is None:
+        run(command)
+    else:
+        command[1:1] = ['-progress', 'pipe:1', '-nostats']
+        with subprocess.Popen(command, stdout=subprocess.PIPE, text=True,
+                              creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)) as process:
+            for line in process.stdout:
+                if line.startswith('out_time_us='):
+                    value = line.strip().split('=', 1)[1]
+                    if value.isdigit():
+                        progress(min(99, int(int(value) / 1_000_000 / total * 100)))
+            if process.wait():
+                raise subprocess.CalledProcessError(process.returncode, command)
 
 
 def format_time(seconds: float) -> str:
@@ -515,7 +547,7 @@ def write_report(path: Path, video: Path, events: list[Event], cache_file: Path)
             counts[source] += 1
 
     lines = [
-        "JuicyCensor v1.0.0 report",
+        "JuicyCensor v2.0.0 report",
         f"Video: {video}",
         f"Alignment cache: {cache_file}",
         f"Events: {len(events)}",

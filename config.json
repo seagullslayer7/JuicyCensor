@@ -1,5 +1,5 @@
 {
-  "model": "large-v3",
+  "model": "base.en",
   "language": "en",
   "device": "auto",
   "compute_type": "float16",
@@ -13,5 +13,11 @@
   "pre_padding": 0.08,
   "post_padding": 0.12,
   "minimum_censor_duration": 0.5,
-  "merge_gap": 0.1
+  "merge_gap": 0.1,
+  "backend": "auto",
+  "vulkan_device": "auto",
+  "vulkan_model": "base.en",
+  "export_path": "",
+  "export_quality": "original",
+  "export_audio_bitrate": "original"
 }
