@@ -47,4 +47,9 @@ jobs:
         shell: pwsh
         run: |
           $assets = Get-ChildItem release -File | Where-Object { $_.Extension -in '.exe', '.zip' -or $_.Name -eq 'SHA256SUMS.txt' } | ForEach-Object FullName
+          gh release view $env:GITHUB_REF_NAME --json id --jq .id 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "A release already exists for this tag; keeping its published assets and notes."
+            exit 0
+          }
           gh release create $env:GITHUB_REF_NAME @assets --verify-tag --draft --title "JuicyCensor $env:GITHUB_REF_NAME" --notes-file RELEASE-NOTES.md
