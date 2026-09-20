@@ -1,6 +1,6 @@
 # Building JuicyCensor 2.0.3
 
-Use Windows x64, Python 3.12.10 for the frozen GUI, PyInstaller 6.21.0, PySide6 6.11.2,
+Use Windows x64, Python 3.12 for the frozen GUI (2.0.3 was built with 3.12.14), PyInstaller 6.21.0, PySide6 6.11.2,
 and Inno Setup 7.1.0. The private processing environment uses Python 3.12.14.
 
 ```powershell
@@ -55,3 +55,4 @@ For unattended runtime verification, explicitly opt in with
 to fetch the starter models too. This downloads dependencies and logs to
 `logs/setup.log`; a zero exit code indicates success. Normal first launch always
 presents the consent/setup dialog instead.
+
