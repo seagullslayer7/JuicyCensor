@@ -744,7 +744,9 @@ class MainWindow(QMainWindow):
         fields = QHBoxLayout()
         self.start, self.end = TimestampEdit(), TimestampEdit()
         for label, spin in [('Start', self.start), ('End', self.end)]:
-            fields.addWidget(QLabel(label))
+            caption = QLabel(label)
+            caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            fields.addWidget(caption)
             spin.setDecimals(3)
             spin.setRange(0, 360000)
             spin.setSingleStep(.05)

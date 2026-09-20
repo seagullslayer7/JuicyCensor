@@ -16,7 +16,7 @@ lets you review their timing, and exports a censored copy.
 | :---: | :---: | :---: |
 | Find your chosen words with NVIDIA, AMD/Vulkan, or CPU processing. | Fine-tune regions with scissors, timeline zoom, and precise timestamps. | Choose your destination, censor style, quality, and encoder. |
 
-![JuicyCensor 2.0.1 review interface with centered timestamp controls](assets/review-2.0.1.png)
+![JuicyCensor 2.0.1 review interface with centered Start and End labels](assets/review-2.0.1.png)
 
 ## Download
 
@@ -142,3 +142,4 @@ the newest packages. WhisperX 3.8.6 requires PyTorch 2.8.x.
 
 Application code is MIT licensed. Bundled/downloaded components have their own licenses:
 see [THIRD-PARTY.md](THIRD-PARTY.md) and the `licenses` folder.
+

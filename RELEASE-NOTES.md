@@ -2,7 +2,7 @@
 
 - Corrected the sidebar badge and first-run setup title to display 2.0.1.
 
-- Centered the Start and End timestamp values for easier reading.
+- Centered the Start and End labels within their spaces, alongside centered timestamp values.
 - Changed the subtitle to “Detect. Review. Filter the Juice.”
 - Replaced the shipped word and phrase lists with ordinary profanity; removed slurs
   and the old non-profanity phrases. Existing user lists remain preserved on upgrade.
@@ -28,4 +28,5 @@ runtime setup. The app is not code-signed.
 
 AMD integrated Radeon and NVIDIA RTX 5060 Ti were tested locally. RX 9060 XT and a
 separate physical clean PC remain untested. Review detected censor regions before sharing.
+
 
