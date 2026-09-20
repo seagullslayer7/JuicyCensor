@@ -1,16 +1,31 @@
-# JuicyCensor 2.0
+<p align="center">
+  <img src="assets/readme-banner.svg" alt="JuicyCensor — Filter the Juice. Detect, review, export." width="960">
+</p>
 
-**Review the Juice.** A Windows desktop app that finds words and phrases in videos,
+<p align="center">
+  <a href="https://github.com/seagullslayer7/JuicyCensor/releases/latest"><strong>Download for Windows</strong></a> ·
+  <a href="#first-launch">Getting started</a> ·
+  <a href="#settings-and-export">Export settings</a> ·
+  <a href="https://github.com/seagullslayer7/JuicyCensor/issues">Report an issue</a>
+</p>
+
+**Filter the Juice.** A Windows desktop app that finds words and phrases in videos,
 lets you review their timing, and exports a censored copy.
+
+| Detect | Review | Export |
+| :---: | :---: | :---: |
+| Find your chosen words with NVIDIA, AMD/Vulkan, or CPU processing. | Fine-tune regions with scissors, timeline zoom, and precise timestamps. | Choose your destination, censor style, quality, and encoder. |
+
+![JuicyCensor 2.0.1 review interface with centered timestamp controls](assets/review-2.0.1.png)
 
 ## Download
 
 Open [GitHub Releases](https://github.com/seagullslayer7/JuicyCensor/releases/latest)
 and expand **Assets**:
 
-- **JuicyCensor-2.0.0-Windows-x64-Setup.exe** — recommended. Choose the installation
+- **Setup.exe** — recommended. Choose the installation
   folder, optionally create a desktop shortcut, and launch the app.
-- **JuicyCensor-2.0.0-Windows-x64-Portable.zip** — extract the entire ZIP into a
+- **Portable.zip** — extract the entire ZIP into a
   writable folder and open **JuicyCensor.exe**. Keep the folder together.
 - **SHA256SUMS.txt** — checksums for the release downloads.
 
@@ -36,8 +51,23 @@ Windows account can write to. Keep your graphics driver current using the GPU
 manufacturer's installer. Drivers are not installed automatically.
 
 Use **Runtime setup** to retry an interrupted setup, repair packages, or switch profiles.
-When starter models are skipped, selecting a model can require a later download.
-Models larger than the included `base.en` starter model can improve detection.
+Starter models are speech-recognition files downloaded during setup. If you skip
+them, download a model before analyzing your first video. The default English model,
+`base.en`, is small and fast. `small.en`, `medium.en`, and `large-v3` may recognize speech
+more accurately, but use more storage and memory and generally process more slowly.
+
+- **NVIDIA / CPU:** choose a model in Settings; missing files download on first use.
+- **AMD / Vulkan:** select a Vulkan model, click **Download Vulkan model**, then reopen
+  Settings to select and save it for use.
+- Models already downloaded in this installation are reused. Changing models does
+  not reinstall Python or the processing runtime. Vulkan uses a separate model format.
+
+## Your words, your filter
+
+The default word and phrase lists contain ordinary profanity, without identity-based
+slurs. Edit them in **Settings** to choose what you want censored. Your local edits
+stay on your PC; they are not automatically uploaded to GitHub. Installer upgrades
+preserve your saved lists, so existing installations keep their previous choices.
 
 ## Review and censor
 

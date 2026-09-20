@@ -1,3 +1,15 @@
+# JuicyCensor 2.0.1 validation
+
+Validated locally on Windows on 2026-09-20.
+
+- Checked centered Start/End controls, timestamp parsing, and increment buttons.
+- Verified the new subtitle and visually inspected the app screenshot and README banner.
+- Confirmed the existing 2.0.0 processing runtime remains ready without reinstalling.
+- Reviewed the shipped profanity lists and parsed the Python source for syntax errors.
+
+The processing pipeline and dependency versions are unchanged. Earlier backend and
+installer validation is recorded below; it is not a new full-system test of this patch.
+
 # JuicyCensor 2.0.0 validation
 
 Validated locally on Windows on 2026-09-19.
@@ -29,3 +41,4 @@ encoder selection tests a few frames before rendering; later failures are still 
 No personal videos or local model/environment overrides are included in the release
 payload. The release builder uses an allowlist. Setup downloads dependencies directly
 from publishers and checks pinned runtime/package hashes.
+

@@ -36,7 +36,7 @@ Git metadata or reports. build_release.py uses an explicit allowlist.
 ## Publishing on GitHub
 
 1. Commit and push the reviewed source to the project repository.
-2. Tag that exact commit `v2.0.0` and push the tag.
+2. Tag that exact commit `v2.0.1` and push the tag.
 3. The release workflow builds artifacts and creates a **draft** GitHub Release.
 4. Review its assets, notes and validation results, then publish it. Mark it latest.
 

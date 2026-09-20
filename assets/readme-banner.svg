@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="350" viewBox="0 0 1200 350" role="img" aria-labelledby="title desc">
+<title id="title">JuicyCensor — Filter the Juice</title><desc id="desc">Orange fruit logo on a dark citrus background. Detect, review, export. Local video censoring for Windows.</desc>
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#171a12"/><stop offset="1" stop-color="#36301b"/></linearGradient></defs>
+<rect width="1200" height="350" rx="28" fill="url(#bg)"/>
+<circle cx="1110" cy="35" r="190" fill="#ff9f24" opacity=".07"/>
+<circle cx="1120" cy="330" r="115" fill="#79b84b" opacity=".08"/>
+<g transform="translate(58 49)"><path d="M130 73Q137 34 191 29Q202 66 145 76" fill="#79b84b"/><path d="M126 88Q124 66 137 52" stroke="#53722d" stroke-width="12" stroke-linecap="round" fill="none"/><ellipse cx="126" cy="149" rx="96" ry="91" fill="#ff9f24"/><ellipse cx="92" cy="99" rx="29" ry="14" transform="rotate(-22 92 99)" fill="#ffd27d"/><path d="M198 148Q205 203 151 222" fill="none" stroke="#ed861c" stroke-width="13" stroke-linecap="round"/></g>
+<g font-family="Segoe UI, Arial, sans-serif"><text x="335" y="116" font-size="57" font-weight="700" fill="#fff4dc">JuicyCensor</text>
+<text x="338" y="168" font-size="32" fill="#ffc563">Filter the Juice.</text>
+<text x="338" y="214" font-size="20" fill="#c9c5b0">Local video censoring. Your words, your control.</text>
+<g fill="#283022" stroke="#53613c"><rect x="338" y="250" width="135" height="44" rx="22"/><rect x="498" y="250" width="135" height="44" rx="22"/><rect x="658" y="250" width="135" height="44" rx="22"/></g>
+<g fill="#fff4dc" font-size="18" text-anchor="middle"><text x="405" y="278">01 · Detect</text><text x="565" y="278">02 · Review</text><text x="725" y="278">03 · Export</text></g></g></svg>

@@ -1,3 +1,13 @@
+# JuicyCensor 2.0.1
+
+- Centered the Start and End timestamp values for easier reading.
+- Changed the subtitle to “Detect. Review. Filter the Juice.”
+- Replaced the shipped word and phrase lists with ordinary profanity; removed slurs
+  and the old non-profanity phrases. Existing user lists remain preserved on upgrade.
+- Refreshed the README with an orange banner, a current screenshot, and clearer model
+  download instructions.
+- Reuses the 2.0.0 processing runtime; no dependency upgrade is needed for this patch.
+
 # JuicyCensor 2.0.0
 
 The new orange-themed desktop app combines detection, playback review and export.

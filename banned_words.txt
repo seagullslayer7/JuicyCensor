@@ -1,11 +1,13 @@
-# One single word per line.
+# Default profanity filter. One single word per line. Customize in Settings.
 fuck
 fucking
 fucker
+fucked
 shit
-bitch
+shitty
+bullshit
 asshole
 motherfucker
-cunt
-nigger
-nigga
+damn
+dammit
+piss

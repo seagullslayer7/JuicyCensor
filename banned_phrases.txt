@@ -1,4 +1,4 @@
-# One multi-word phrase per line.
-kill yourself
-go kill yourself
-heil hitler
+# Default profanity filter. One multi-word phrase per line. Customize in Settings.
+what the fuck
+holy shit
+pissed off

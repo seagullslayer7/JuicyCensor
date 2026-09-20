@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JuicyCensor v2.0.0
+JuicyCensor v2.0.1
 
 Uses cached WhisperX forced-alignment when available, then creates a new
 censored MP4. The original video is never modified.
@@ -547,7 +547,7 @@ def write_report(path: Path, video: Path, events: list[Event], cache_file: Path)
             counts[source] += 1
 
     lines = [
-        "JuicyCensor v2.0.0 report",
+        "JuicyCensor v2.0.1 report",
         f"Video: {video}",
         f"Alignment cache: {cache_file}",
         f"Events: {len(events)}",

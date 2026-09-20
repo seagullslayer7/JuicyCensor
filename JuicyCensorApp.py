@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 
-VERSION = '2.0.0'
+VERSION = '2.0.1'
 EXTENSIONS = {'.mp4', '.mkv', '.mov', '.avi', '.webm', '.m4v'}
 
 
@@ -117,6 +117,7 @@ class TimestampEdit(TriangleSpinBox):
     """Edit a duration without wrapping at midnight, retaining millisecond precision."""
     def __init__(self):
         super().__init__()
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setDecimals(3)
         self.setRange(0, 360000)
         self.setSingleStep(.05)
@@ -574,7 +575,7 @@ class MainWindow(QMainWindow):
         title = QLabel('Review the Juice')
         title.setObjectName('heading')
         heading.addWidget(title)
-        subtitle = QLabel('Detect. Review. Make every word yours.')
+        subtitle = QLabel('Detect. Review. Filter the Juice.')
         subtitle.setObjectName('muted')
         heading.addWidget(subtitle)
         header.addLayout(heading, 1)
