@@ -16,7 +16,7 @@ lets you review their timing, and exports a censored copy.
 | :---: | :---: | :---: |
 | Find your chosen words with NVIDIA, AMD/Vulkan, or CPU processing. | Fine-tune regions with scissors, timeline zoom, and precise timestamps. | Choose your destination, censor style, quality, and encoder. |
 
-![JuicyCensor 2.0.1 review interface with centered Start and End labels](assets/review-2.0.1.png)
+![JuicyCensor video review interface](assets/review-2.0.1.png)
 
 ## Download
 
@@ -42,9 +42,8 @@ The app asks before downloading its private processing environment. Choose:
 
 Both choices support hardware video export when the driver and GPU support it.
 Leave **Download starter English models now** selected for the quickest start.
-Setup installs private Python 3.12.14, hash-pinned processing packages, FFmpeg 7.1.1,
-and whisper.cpp Vulkan 1.8.4. It does not require you to install Python, Git,
-Visual Studio or the CUDA Toolkit, and does not modify system Python or PATH.
+Setup downloads the required processing tools into the application folder.
+No separate Python, developer tools, or CUDA Toolkit installation is required.
 
 Allow several GB of free space (more for CUDA and larger models). Use a folder your
 Windows account can write to. Keep your graphics driver current using the GPU
@@ -64,10 +63,8 @@ more accurately, but use more storage and memory and generally process more slow
 
 ## Your words, your filter
 
-The default word and phrase lists contain ordinary profanity, without identity-based
-slurs. Edit them in **Settings** to choose what you want censored. Your local edits
-stay on your PC; they are not automatically uploaded to GitHub. Installer upgrades
-preserve your saved lists, so existing installations keep their previous choices.
+Start with the included profanity lists, then add or remove words and phrases in
+**Settings** to customize your filter. Installer upgrades preserve your saved lists.
 
 ## Review and censor
 
@@ -100,8 +97,8 @@ export without reanalyzing. Resolution limits preserve aspect ratio and do not u
   hardware availability varies. Explicit unavailable choices report an error.
 - **Original audio quality** targets the source bitrate when reported between 8 and
   512 kbps; otherwise it uses 192 kbps. Censoring re-encodes audio, so this is not lossless.
-- AAC works with MP4 and Matroska. Opus selects Matroska automatically. MP4 here is
-  standard MP4, not OBS Hybrid MP4. HEVC/AV1 playback requires a compatible player.
+- AAC works with MP4 and Matroska. Opus selects Matroska automatically.
+  HEVC/AV1 playback requires a compatible player.
 
 Speech-analysis hardware and export encoders are independent settings.
 
@@ -111,9 +108,8 @@ Speech-analysis hardware and export encoders are independent settings.
 - An up-to-date graphics driver for hardware acceleration; CPU processing is available.
 - Internet for initial setup and new model downloads; processing runs locally afterward.
 
-Tested locally on an NVIDIA RTX 5060 Ti and AMD integrated Radeon graphics. RX 9060 XT
-is a target device but has not been physically tested. Do not assume identical speed
-or support across all GPUs. See [VALIDATION.md](VALIDATION.md) for test coverage.
+GPU support and performance depend on the model and installed drivers.
+See [VALIDATION.md](VALIDATION.md) for tested hardware and known limitations.
 
 The release is not code-signed; Windows may show an unknown-publisher warning. Verify
 the download's checksum against SHA256SUMS.txt on the release page.
@@ -136,10 +132,8 @@ private video content or sensitive paths.
 
 ## Development and releases
 
-See [BUILDING.md](BUILDING.md). Dependency updates are resolved and tested before release;
-setup deliberately installs pinned compatible versions instead of blindly installing
-the newest packages. WhisperX 3.8.6 requires PyTorch 2.8.x.
+See [BUILDING.md](BUILDING.md) for source builds, dependency versions, and the release
+process.
 
 Application code is MIT licensed. Bundled/downloaded components have their own licenses:
 see [THIRD-PARTY.md](THIRD-PARTY.md) and the `licenses` folder.
-
