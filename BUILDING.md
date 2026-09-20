@@ -1,6 +1,6 @@
-# Building JuicyCensor 2.0.3
+# Building JuicyCensor 2.1.0
 
-Use Windows x64, Python 3.12 for the frozen GUI (2.0.3 was built with 3.12.14), PyInstaller 6.21.0, PySide6 6.11.2,
+Use Windows x64, Python 3.12 for the frozen GUI (2.1.0 was built with 3.12.14), PyInstaller 6.21.0, PySide6 6.11.2,
 and Inno Setup 7.1.0. The private processing environment uses Python 3.12.14.
 
 ```powershell
@@ -36,7 +36,7 @@ Git metadata or reports. build_release.py uses an explicit allowlist.
 ## Publishing on GitHub
 
 1. Commit and push the reviewed source to the project repository.
-2. Tag that exact commit `v2.0.3` and push the tag.
+2. Tag that exact commit `v2.1.0` and push the tag.
 3. The release workflow builds artifacts and creates a **draft** GitHub Release.
 4. Review its assets, notes and validation results, then publish it. Mark it latest.
 

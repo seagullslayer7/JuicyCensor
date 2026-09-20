@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 import traceback
 from dataclasses import asdict
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 ROOT = Path(__file__).resolve().parent
 _job_handle = None
@@ -101,15 +101,18 @@ def run_job(job: dict):
         duration = app.probe_duration(video)
         if not math.isfinite(duration) or duration <= 0:
             raise ValueError('Video has no valid duration.')
+        emit('estimate', duration=duration, backend=config['backend'])
         lists = [app.read_entries(ROOT / 'banned_words.txt'), app.read_entries(ROOT / 'banned_phrases.txt')]
         analysis_config = {key: value for key, value in config.items() if not key.startswith('export_') and key not in ('censor_mode', 'beep_volume', 'beep_frequency', 'beep_file')}
         analysis_key = hashlib.sha256(json.dumps([analysis_config, lists], sort_keys=True).encode()).hexdigest()[:16]
         state_path = ROOT / 'cache' / 'reviews' / f'{fingerprint}_{analysis_key}.json'
+        saved = None
         if state_path.exists():
             saved = json.loads(state_path.read_text(encoding='utf-8'))
             validate_events(saved['events'], duration)
-            emit('review', state=saved, state_path=str(state_path))
-            return
+            if 'words' in saved:
+                emit('review', state=saved, state_path=str(state_path))
+                return
         audio = paths['audio_cache'] / f'{fingerprint}.wav'
         # Stage extraction so cancellation cannot turn a partial WAV into a cache hit.
         if not audio.exists():
@@ -122,27 +125,61 @@ def run_job(job: dict):
                 temp_audio.unlink(missing_ok=True)
         emit('stage', message='Transcribing and aligning words', percent=20)
         alignment_path = paths['aligned_cache'] / f'{fingerprint}.json'
-        aligned = app.transcribe_and_align(audio, config, alignment_path)
-        emit('stage', message='Finding censor regions', percent=95)
+        ranges = {'load': (10, 20), 'transcribe': (20, 75), 'align_load': (75, 77), 'align': (77, 96)}
+        def analysis_progress(phase, percent, message):
+            low, high = ranges[phase]
+            emit('stage', message=message, phase=phase, phase_percent=percent,
+                 percent=low + (high - low) * percent / 100)
+        aligned = app.transcribe_and_align(audio, config, alignment_path, progress=analysis_progress)
+        emit('stage', message='Finding censor regions', percent=97, phase='finish')
         words = app.flatten_words(aligned)
         events = app.find_events(words, *lists, config)
         # Padding at the end of the last word may exceed the media duration.
         events = [app.Event(e.start, min(e.end, duration), e.matched, e.kind, e.source)
                   for e in events if e.start < duration]
         state = {'video': str(video), 'fingerprint': fingerprint, 'duration': duration,
-                 'events': [asdict(e) for e in events], 'word_count': len(words),
+                 'events': saved['events'] if saved else [asdict(e) for e in events],
+                 'words': [asdict(w) for w in words], 'word_count': len(words),
                  'backend': aligned['_backend'], 'alignment_device': aligned['_alignment_device'],
-                 'config': config, 'schema': 2}
+                 'config': config, 'schema': 3}
         atomic_json(state_path, state)
         emit('review', state=state, state_path=str(state_path))
-    elif action == 'render':
+    elif action in ('render', 'preview'):
         state = job['state']
         if state['fingerprint'] != fingerprint:
             raise ValueError('The original video changed. Analyze it again before rendering.')
         duration = app.probe_duration(video)
+        emit('estimate', duration=duration, backend='render')
         events = validate_events(state['events'], duration)
         if not events:
             raise ValueError('There are no censor regions to render.')
+        if action == 'preview':
+            # Use the export audio filters with copied video: one player, one clock.
+            preview_config = dict(config, export_quality='original', export_encoder='copy',
+                export_resolution='original', export_fps='original', export_format='mkv',
+                export_audio_encoder='aac', export_audio_bitrate='320')
+            beep = ROOT / config.get('beep_file', 'beep.mp3')
+            sound = {key: value for key, value in config.items()
+                     if not key.startswith('export_')}
+            if config.get('censor_mode') == 'custom_beep' and beep.is_file():
+                sound['beep_sha256'] = hashlib.sha256(beep.read_bytes()).hexdigest()
+            key = hashlib.sha256(json.dumps([1, fingerprint, state['events'], sound],
+                sort_keys=True).encode()).hexdigest()
+            folder = ROOT / 'cache' / 'previews'
+            folder.mkdir(parents=True, exist_ok=True)
+            output = folder / f'{key}.mkv'
+            if not output.is_file():
+                preview_id = UUID(job['preview_id']).hex if job.get('preview_id') else uuid4().hex
+                temporary = folder / f'{preview_id}.partial.mkv'
+                try:
+                    emit('stage', message='Preparing censored playback', percent=0, phase='render', phase_percent=0)
+                    app.create_censored_video(video, beep, temporary, events, preview_config,
+                        progress=lambda percent: emit('stage', message='Preparing censored playback', percent=percent, phase='render', phase_percent=percent))
+                    temporary.replace(output)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            emit('previewed', output=str(output))
+            return
         name = f'{app.safe_stem(video)}_{fingerprint[:6]}_{uuid4().hex[:6]}'
         if config.get('export_no_spaces'):
             name = '_'.join(name.split())
@@ -155,10 +192,10 @@ def run_job(job: dict):
         folder.mkdir(parents=True, exist_ok=True)
         output = folder / f'{name}_censored.{container}'
         temporary = output.with_name(output.stem + '.partial' + output.suffix)
-        emit('stage', message='Rendering censored video', percent=1)
+        emit('stage', message='Rendering censored video', percent=1, phase='render', phase_percent=0)
         try:
             app.create_censored_video(video, ROOT / config.get('beep_file', 'beep.mp3'), temporary, events, config,
-                progress=lambda percent: emit('stage', message='Rendering censored video', percent=percent))
+                progress=lambda percent: emit('stage', message='Rendering censored video', percent=percent, phase='render', phase_percent=percent))
             temporary.replace(output)
         finally:
             temporary.unlink(missing_ok=True)

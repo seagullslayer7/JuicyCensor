@@ -1,3 +1,11 @@
+# JuicyCensor 2.1.0
+
+- Compare Original and Censored audio inside the review workspace. The first censored preview prepares a cached video using the same audio filters as export, without re-encoding the video stream.
+- Editing a censor region or changing sound settings resets playback to Original so stale previews cannot hide changes. Existing Start/End fields and Apply adjust each region precisely.
+- Browse and search the new Transcript tab; click a timestamped row to seek. Older reviews gain transcripts on analysis while preserving manual region edits.
+- Added elapsed time and approximate time remaining below the progress bar. Estimates begin on the first run from video length and processing settings, then update from live transcription, alignment, and rendering progress.
+- Preserved installer recovery, model-download fixes, and confirmed AMD RX 9060 XT support from earlier releases.
+
 # JuicyCensor 2.0.3
 
 - Polished Settings labels and explanations, and removed the RX 9060 XT pending-validation notice following user confirmation.

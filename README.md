@@ -12,7 +12,7 @@
 Find words and phrases in your videos, fine-tune the censor regions, and export a filtered copy. Processing runs locally on your PC.
 
 <p align="center">
-  <img src="assets/review-2.0.3.png" alt="JuicyCensor video review workspace" width="900">
+  <img src="assets/review-2.1.0.png" alt="JuicyCensor video review workspace" width="900">
 </p>
 
 ## Quick start
@@ -20,13 +20,22 @@ Find words and phrases in your videos, fine-tune the censor regions, and export 
 1. **Install.** Get **Setup.exe** from the [latest release](https://github.com/seagullslayer7/JuicyCensor/releases/latest). Choose your folder and launch the app.
 2. **Set up.** Choose **NVIDIA CUDA** or **AMD / Intel / CPU**. Leave starter models selected; setup downloads the required tools.
 3. **Analyze.** Add a video, customize your word lists in **Settings**, and click **Analyze video**.
-4. **Review and export.** Check the detected regions, adjust their timing, choose a censor style, and export.
+4. **Review and export.** Choose a censor style, switch to **Censored audio** to listen, fine-tune regions, and export.
 
 **Windows 10 (1809+) or Windows 11, 64-bit.** Initial setup needs internet and several GB of free space. No separate Python or CUDA Toolkit installation is needed.
 
 Prefer a portable copy? Extract **Portable.zip** and open **JuicyCensor.exe**. Keep the extracted folder together. GitHub's **Source code** archive is for developers.
 
-> Preview plays the original audio. Censoring is applied to the exported video, and the original file stays untouched. Always review detected regions before sharing.
+> **Hear it before you export.** Toggle Original / Censored audio to compare. The first censored preview prepares a cached copy using the export audio filters; timing or sound changes reset playback to Original. Your source video stays untouched.
+
+<details>
+<summary><strong>Explore the searchable transcript</strong></summary>
+
+Search for a word or phrase, then click a timestamped row to jump there. Use the Censor regions tab to adjust Start/End and click Apply.
+
+<img src="assets/transcript-2.1.0.png" alt="Searchable transcript with timestamped rows" width="900">
+
+</details>
 
 ## Settings
 
@@ -51,7 +60,9 @@ Click either screenshot to view it full size.
 
 **Your filter:** add or remove words and phrases in Settings. The included lists provide a starting point with common profanity.
 
-**Your review:** use scissors to mark regions, magnifiers to zoom the timeline, and Start/End fields for precise adjustments. Hover over controls for help.
+**Your review:** use scissors to mark regions, magnifiers to zoom the timeline, and Start/End fields for precise adjustments. Click **Apply** to save timing edits. The **Transcript** tab supports search and click-to-seek. Hover over controls for help.
+
+**Your progress:** elapsed time appears below the progress bar. An approximate remaining time appears for analysis, export, and preview preparation, including the first run. It starts from video length and processing settings, then updates with live progress. Model downloads can add time.
 
 <details>
 <summary><strong>Choosing and downloading a speech model</strong></summary>

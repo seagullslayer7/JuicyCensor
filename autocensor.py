@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JuicyCensor v2.0.3
+JuicyCensor v2.1.0
 
 Uses cached WhisperX forced-alignment when available, then creates a new
 censored MP4. The original video is never modified.
@@ -141,9 +141,9 @@ def extract_audio(video: Path, audio_path: Path) -> None:
     ])
 
 
-def transcribe_and_align(audio_path: Path, config: dict[str, Any], aligned_cache_path: Path) -> dict[str, Any]:
+def transcribe_and_align(audio_path: Path, config: dict[str, Any], aligned_cache_path: Path, progress=None) -> dict[str, Any]:
     from transcription import transcribe_and_align as transcribe
-    return transcribe(audio_path, config, aligned_cache_path)
+    return transcribe(audio_path, config, aligned_cache_path, progress=progress)
 
 
 def flatten_words(aligned: dict[str, Any]) -> list[Word]:
@@ -547,7 +547,7 @@ def write_report(path: Path, video: Path, events: list[Event], cache_file: Path)
             counts[source] += 1
 
     lines = [
-        "JuicyCensor v2.0.3 report",
+        "JuicyCensor v2.1.0 report",
         f"Video: {video}",
         f"Alignment cache: {cache_file}",
         f"Events: {len(events)}",

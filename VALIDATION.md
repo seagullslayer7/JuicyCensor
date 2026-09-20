@@ -1,3 +1,19 @@
+# JuicyCensor 2.1.0 validation
+
+- All 27 backend, cache, setup, review and time-estimate tests passed. New FFmpeg integration checks
+  verify mute, continuous beep, pulse beep and custom beep audio, unchanged copied
+  video streams, preview cache reuse/invalidation, invalid bounds and cleanup.
+- Confirmed live transcription and alignment callbacks with real CPU and Vulkan
+  analysis of the JFK sample, using existing offline models. First-run estimates,
+  stage transitions, slower batches and out-of-order updates are covered by tests.
+- Older review migration preserves edited regions while adding aligned transcript words.
+- Qt integration checks cover transcript search/seek, original/censored source switching,
+  cached switching, playhead and speed preservation, timing-edit invalidation and ETA.
+- Preview and export use the same audio filter builders. Preview requires preparation
+  and disk space for a cached video copy; it is not live audio filtering while editing.
+- Estimates are approximate and available on the first run. Initial estimates use
+  video length and processing settings; live stage progress refines the remaining time.
+
 # JuicyCensor 2.0.3 validation
 
 - AMD Radeon RX 9060 XT Vulkan support is confirmed by a user on a separate PC.

@@ -83,7 +83,11 @@ def cache_signature(audio: Path, config: dict, backend: str) -> str:
     return hashlib.sha256(json.dumps(details, sort_keys=True).encode()).hexdigest()
 
 
-def transcribe_and_align(audio_path: Path, config: dict, cache_path: Path) -> dict:
+def transcribe_and_align(audio_path: Path, config: dict, cache_path: Path, progress=None) -> dict:
+    def report(phase, percent, message):
+        if progress:
+            progress(phase, percent, message)
+    report('load', 0, 'Loading speech model')
     import torch
     import whisperx
     requested = config.get('backend', config.get('device', 'auto'))
@@ -113,17 +117,28 @@ def transcribe_and_align(audio_path: Path, config: dict, cache_path: Path) -> di
         scratch.mkdir(parents=True, exist_ok=True)
         prefix = scratch / uuid4().hex
         command = [str(CLI), '-m', str(model_path), '-f', str(audio_path),
-                   '-l', language, '-dev', str(device['id']), '-oj', '-of', str(prefix)]
-        process = subprocess.run(command, capture_output=True, text=True, encoding='utf-8',
-                                 errors='replace', creationflags=CREATE_NO_WINDOW)
-        (scratch / 'last-vulkan.log').write_text(process.stderr + process.stdout, encoding='utf-8')
+                   '-l', language, '-dev', str(device['id']), '-pp', '-oj', '-of', str(prefix)]
+        lines = []
+        report('transcribe', 0, 'Transcribing on Vulkan GPU')
+        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True, encoding='utf-8', errors='replace',
+                              creationflags=CREATE_NO_WINDOW) as process:
+            for line in process.stdout:
+                lines.append(line)
+                print(line.rstrip(), flush=True)
+                match = re.search(r'progress\s*=\s*(\d+(?:\.\d+)?)%', line, re.I)
+                if match:
+                    report('transcribe', float(match[1]), 'Transcribing on Vulkan GPU')
+            process.wait()
+        output = ''.join(lines)
+        (scratch / 'last-vulkan.log').write_text(output, encoding='utf-8')
         json_path = prefix.with_suffix('.json')
         try:
             if process.returncode:
                 raise RuntimeError('Vulkan transcription failed. Check cache/transcripts/last-vulkan.log. '
-                                   'Try a smaller model or CPU.\n' + process.stderr[-1800:])
+                                   'Try a smaller model or CPU.\n' + output[-1800:])
             # Require positive evidence that inference used a Vulkan backend.
-            if not re.search(r'(using\s+Vulkan\d+\s+backend|Vulkan\d+.*buffer size)', process.stderr, re.I):
+            if not re.search(r'(using\s+Vulkan\d+\s+backend|Vulkan\d+.*buffer size)', output, re.I):
                 raise RuntimeError('The runtime did not confirm Vulkan inference; refusing to report GPU success.')
             result = parse_cpp_result(json.loads(json_path.read_text(encoding='utf-8')))
         finally:
@@ -136,14 +151,17 @@ def transcribe_and_align(audio_path: Path, config: dict, cache_path: Path) -> di
         model = whisperx.load_model(config.get('model', 'large-v3'), backend,
                                    compute_type=precision, language=None if language == 'auto' else language)
         try:
+            report('transcribe', 0, 'Transcribing speech')
             result = model.transcribe(audio, batch_size=int(config.get('batch_size', 8)),
-                                      language=None if language == 'auto' else language, print_progress=True)
+                                      language=None if language == 'auto' else language, print_progress=True,
+                                      progress_callback=lambda percent: report('transcribe', percent, 'Transcribing speech'))
         finally:
             del model
             gc.collect()
             if backend == 'cuda':
                 torch.cuda.empty_cache()
-    print('@@' + json.dumps({'type': 'stage', 'message': 'Aligning words', 'percent': 75}), flush=True)
+    report('transcribe', 100, 'Transcription complete')
+    report('align_load', 0, 'Loading word-alignment model')
     detected = result.get('language') or language
     if detected == 'auto':
         raise RuntimeError('The transcription backend did not identify a language.')
@@ -151,8 +169,10 @@ def transcribe_and_align(audio_path: Path, config: dict, cache_path: Path) -> di
         print(f'Aligning words on {alignment_device} ({detected}).', flush=True)
         align_model, metadata = whisperx.load_align_model(language_code=detected, device=alignment_device)
         try:
+            report('align', 0, 'Aligning words')
             aligned = whisperx.align(result['segments'], align_model, metadata, audio,
-                                     alignment_device, return_char_alignments=False, print_progress=True)
+                                     alignment_device, return_char_alignments=False, print_progress=True,
+                                     progress_callback=lambda percent: report('align', percent, 'Aligning words'))
         finally:
             del align_model
             gc.collect()
@@ -160,6 +180,7 @@ def transcribe_and_align(audio_path: Path, config: dict, cache_path: Path) -> di
                 torch.cuda.empty_cache()
     else:
         aligned = {'segments': [], 'word_segments': []}
+    report('align', 100, 'Word alignment complete')
     for segment in aligned['segments']:
         for word in segment.get('words', []):
             if 'start' in word and 'end' in word:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import time
 import re
 import os
 import subprocess
@@ -18,8 +19,9 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
     QComboBox, QDialog, QFormLayout, QPlainTextEdit, QTabWidget, QDialogButtonBox, QMessageBox, QSlider, QStyle, QMenu, QWidgetAction, QScrollBar, QStyleOptionSpinBox, QStyleOptionComboBox, QLineEdit, QCheckBox, QScrollArea)
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
+from processing_time import RemainingTime, format_duration
 
-VERSION = '2.0.3'
+VERSION = '2.1.0'
 EXTENSIONS = {'.mp4', '.mkv', '.mov', '.avi', '.webm', '.m4v'}
 
 
@@ -439,6 +441,7 @@ QLabel#logo { color: #ffac35; font-size: 25px; font-weight: 800; letter-spacing:
 QLabel#heading { font-size: 27px; font-weight: 700; }
 QLabel#sectionTitle { font-size: 19px; font-weight: 600; }
 QLabel#muted { color: #b5b79a; }
+QLabel#remainingTime { color: #ffbf63; font-weight: 600; }
 QLabel#badge { color: #ffbf63; background: #342b1a; border: 1px solid #64502d; border-radius: 16px; padding: 6px 14px; font-size: 12px; font-weight: 600; }
 QScrollBar:horizontal { background: #24291b; height: 12px; border: 1px solid #51563a; border-radius: 5px; }
 QScrollBar::handle:horizontal { background: #7a874e; min-width: 24px; border-radius: 4px; }
@@ -456,6 +459,7 @@ QScrollBar::handle:vertical { background: #7a874e; min-height: 26px; border-radi
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
 QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #7a874e; border-radius: 3px; background: #24291b; }
+QPushButton#previewToggle:checked { background: #31552a; border: 1px solid #79b84b; color: #f5f7ee; }
 QCheckBox::indicator:checked { background: #ff9f24; border-color: #ffc563; }
 QPushButton:hover { background: #465031; }
 QPushButton:pressed { background: #536039; }
@@ -482,6 +486,10 @@ QProgressBar::chunk { background: #398b38; border-radius: 7px; }
 QTabBar::tab { padding: 12px 20px; background: #282d1e; }
 QTabBar::tab:selected { background: #434c2b; color: #ffb94f; }
 QTabWidget::pane { border: 1px solid #414a2c; }
+QTabWidget#reviewTabs::pane { border: 0; background: #242219; }
+QWidget#reviewPage { background: #242219; }
+QTableWidget#reviewTable::item { padding: 8px 12px; border-bottom: 1px solid #383c29; }
+QTableWidget#reviewTable QHeaderView::section { padding: 12px; }
 QSplitter::handle { background: #191710; width: 10px; }
 '''
 
@@ -510,7 +518,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(f'JuicyCensor · {VERSION}')
         self.resize(1390, 920)
-        self.setMinimumSize(1080, 760)
+        self.setMinimumSize(1360, 860)
         self.setAcceptDrops(True)
         self.config = json.loads((ROOT / 'config.json').read_text(encoding='utf-8'))
         self.devices, self.reviews, self.queue_paths = [], {}, []
@@ -522,7 +530,17 @@ class MainWindow(QMainWindow):
         self.audio = QAudioOutput(self)
         self.audio.setVolume(.65)
         self.player.setAudioOutput(self.audio)
+        self.preview_restore = None
+        self.preview_file = None
+        self.job_started = None
+        self.time_estimate = None
+        self.cuda_available = False
         self.build_ui()
+        self.elapsed_timer = QTimer(self)
+        self.elapsed_timer.timeout.connect(self.refresh_elapsed)
+        self.elapsed_timer.start(1000)
+        self.player.mediaStatusChanged.connect(self.restore_preview_position)
+        self.player.errorOccurred.connect(self.preview_failed)
         self.player.playbackStateChanged.connect(self.sync_play_icon)
         self.player.positionChanged.connect(self.position_changed)
         self.player.durationChanged.connect(self.duration_changed)
@@ -727,11 +745,16 @@ class MainWindow(QMainWindow):
         editor = QFrame()
         editor.setObjectName('card')
         edits = QVBoxLayout(editor)
-        edits.setContentsMargins(18, 18, 18, 18)
+        edits.setContentsMargins(22, 22, 22, 22)
+        edits.setSpacing(14)
         self.region_count = QLabel('Censor regions')
         self.region_count.setObjectName('sectionTitle')
         edits.addWidget(self.region_count)
         self.table = QTableWidget(0, 3)
+        self.table.setObjectName('reviewTable')
+        self.table.setMinimumHeight(110)
+        self.table.setShowGrid(False)
+        self.table.verticalHeader().setDefaultSectionSize(44)
         self.table.setHorizontalHeaderLabels(['Start', 'End', 'Match'])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().hide()
@@ -740,26 +763,69 @@ class MainWindow(QMainWindow):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.itemSelectionChanged.connect(self.select_region)
-        edits.addWidget(self.table, 1)
+        tabs = QTabWidget()
+        tabs.setObjectName('reviewTabs')
+        regions = QWidget()
+        regions.setObjectName('reviewPage')
+        region_layout = QVBoxLayout(regions)
+        region_layout.setContentsMargins(10, 18, 10, 12)
+        region_layout.setSpacing(14)
+        tabs.addTab(regions, 'Censor regions')
+        transcript_page = QWidget()
+        transcript_page.setObjectName('reviewPage')
+        transcript_layout = QVBoxLayout(transcript_page)
+        transcript_layout.setContentsMargins(10, 18, 10, 12)
+        transcript_layout.setSpacing(14)
+        self.transcript_search = QLineEdit()
+        self.transcript_search.setPlaceholderText('Search the transcript…')
+        self.transcript_search.setClearButtonEnabled(True)
+        self.transcript_search.setToolTip('Find words or phrases. Click a transcript row to jump to that part of the video.')
+        self.transcript_search.textChanged.connect(self.refresh_transcript)
+        transcript_layout.addWidget(self.transcript_search)
+        self.transcript = QTableWidget(0, 2)
+        self.transcript.setObjectName('reviewTable')
+        self.transcript.setShowGrid(False)
+        self.transcript.verticalHeader().setMinimumSectionSize(44)
+        self.transcript.setHorizontalHeaderLabels(['Time', 'Transcript'])
+        self.transcript.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.transcript.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.transcript.verticalHeader().hide()
+        self.transcript.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.transcript.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.transcript.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.transcript.cellClicked.connect(self.seek_transcript)
+        transcript_layout.addWidget(self.transcript, 1)
+        self.transcript_hint = QLabel('Analyze a video to see its transcript.')
+        self.transcript_hint.setObjectName('muted')
+        self.transcript_hint.setWordWrap(True)
+        transcript_layout.addWidget(self.transcript_hint)
+        tabs.addTab(transcript_page, 'Transcript')
+        edits.addWidget(tabs, 1)
+        region_layout.addWidget(self.table, 1)
         fields = QHBoxLayout()
         self.start, self.end = TimestampEdit(), TimestampEdit()
         for label, spin in [('Start', self.start), ('End', self.end)]:
+            time_pair = QHBoxLayout()
+            time_pair.setSpacing(8)
             caption = QLabel(label)
             caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            fields.addWidget(caption)
+            caption.setFixedWidth(max(38, caption.sizeHint().width() + 8))
+            time_pair.addWidget(caption)
             spin.setDecimals(3)
             spin.setRange(0, 360000)
             spin.setSingleStep(.05)
-            fields.addWidget(spin)
-        edits.addLayout(fields)
+            time_pair.addWidget(spin, 1)
+            fields.addLayout(time_pair, 1)
+        fields.setSpacing(18)
+        region_layout.addLayout(fields)
         region_buttons = QHBoxLayout()
         region_buttons.addWidget(button('Apply', self.apply_region))
         region_buttons.addWidget(button('Remove', self.remove_region))
-        edits.addLayout(region_buttons)
-        info = QLabel('Use the scissors to mark a start, then end the censor selection.\nFine-tune Start and End here. Changes save automatically.')
+        region_layout.addLayout(region_buttons)
+        info = QLabel('Use the scissors to mark a start, then end the censor selection.\nSelect a region, adjust Start and End, then click Apply.')
         info.setObjectName('muted')
         info.setWordWrap(True)
-        edits.addWidget(info)
+        region_layout.addWidget(info)
         split.addWidget(editor)
         split.setSizes([580, 480])
         area.addWidget(split, 1)
@@ -767,11 +833,17 @@ class MainWindow(QMainWindow):
         footer.addWidget(QLabel('Censor style'))
         self.mode = CitrusComboBox()
         self.mode.setMinimumWidth(215)
-        self.mode.setToolTip("Choose the sound used inside censor regions when exporting")
+        self.mode.setToolTip("Choose the sound used for censored playback and export")
         for label, value in [('Continuous beep', 'continuous_beep'), ('Pulse beep', 'pulse_beep'), ('Custom beep', 'custom_beep'), ('Mute', 'mute')]:
             self.mode.addItem(label, value)
         self.mode.setCurrentIndex(max(0, self.mode.findData(self.config.get('censor_mode'))))
+        self.mode.currentIndexChanged.connect(self.invalidate_preview)
         footer.addWidget(self.mode)
+        self.censored_preview = button('Original audio', self.toggle_censored_preview)
+        self.censored_preview.setCheckable(True)
+        self.censored_preview.setObjectName('previewToggle')
+        self.censored_preview.setToolTip('Switch between original and censored audio. The first censored preview needs a brief preparation; timing edits require a new preview.')
+        footer.addWidget(self.censored_preview)
         footer.addStretch()
         self.open_result_btn = button('View last export', self.open_result)
         self.open_result_btn.setEnabled(False)
@@ -793,6 +865,18 @@ class MainWindow(QMainWindow):
         self.progress.setFixedHeight(26)
         self.progress.setValue(0)
         area.addWidget(self.progress)
+        self.elapsed_label = QLabel('')
+        self.elapsed_label.setObjectName('muted')
+        self.elapsed_label.setToolTip('Time spent on this job, including preparation.')
+        self.remaining_label = QLabel('')
+        self.remaining_label.setObjectName('remainingTime')
+        self.remaining_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.remaining_label.setToolTip('Approximate time left for the current video. The first estimate uses video length and processing settings, then updates from live progress. Model downloads and slower batches can increase it.')
+        time_row = QHBoxLayout()
+        time_row.addWidget(self.elapsed_label)
+        time_row.addStretch()
+        time_row.addWidget(self.remaining_label)
+        area.addLayout(time_row)
         self.update_controls()
 
     def set_status(self, message):
@@ -885,6 +969,120 @@ class MainWindow(QMainWindow):
         self.save_review()
         self.table.selectRow(len(self.state['events']) - 1)
         self.set_status('Censor region added. Fine-tune its Start and End if needed.')
+    def preview_failed(self, error, message):
+        self.invalidate_preview()
+
+    def refresh_transcript(self):
+        if not hasattr(self, 'transcript'):
+            return
+        words = self.state.get('words', []) if self.state else []
+        query = self.transcript_search.text().strip().casefold()
+        text = ' '.join(w['text'] for w in words).casefold()
+        hits = []
+        if query:
+            start = text.find(query)
+            while start >= 0:
+                hits.append((start, start + len(query)))
+                start = text.find(query, start + 1)
+        rows, offset = [], 0
+        for index in range(0, len(words), 8):
+            chunk = words[index:index + 8]
+            label = ' '.join(w['text'] for w in chunk)
+            end = offset + len(label.casefold())
+            if not query or any(a < end and b > offset for a, b in hits):
+                rows.append((chunk[0]['start'], label))
+            offset = end + 1
+        self.transcript.setRowCount(len(rows))
+        for row, (start, label) in enumerate(rows):
+            timestamp = QTableWidgetItem(clock(start))
+            timestamp.setData(Qt.ItemDataRole.UserRole, start)
+            self.transcript.setItem(row, 0, timestamp)
+            self.transcript.setItem(row, 1, QTableWidgetItem(label))
+        self.transcript.resizeRowsToContents()
+        self.transcript_hint.setText(('No matches.' if query and not rows else 'Click a row to seek. Transcripts may contain recognition errors.')
+            if words else 'Analyze this video to load its transcript. Existing region edits are preserved.')
+
+    def seek_transcript(self, row, column):
+        item = self.transcript.item(row, 0)
+        if item:
+            self.preview_end = None
+            self.player.setPosition(round(item.data(Qt.ItemDataRole.UserRole) * 1000))
+
+    def switch_playback_source(self, path):
+        position = self.player.position()
+        playing = self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        if self.job.get('action') == 'preview' and self.censored_preview.isChecked():
+            playing = getattr(self, 'preview_was_playing', False)
+        self.player.pause()
+        self.preview_restore = (position, playing, self.player.playbackRate(), self.timeline.zoom, self.timeline.offset)
+        self.player.setSource(QUrl.fromLocalFile(str(path)))
+
+    def restore_preview_position(self, status):
+        if self.preview_restore and status in (QMediaPlayer.MediaStatus.LoadedMedia, QMediaPlayer.MediaStatus.BufferedMedia):
+            position, playing, rate, zoom, offset = self.preview_restore
+            self.preview_restore = None
+            self.player.setPlaybackRate(rate)
+            self.player.setPosition(position)
+            self.timeline.set_view(zoom, offset)
+            if playing:
+                self.player.play()
+
+    def invalidate_preview(self, *args, switch=True):
+        if not hasattr(self, 'censored_preview'):
+            return
+        self.preview_file = None
+        checked = self.censored_preview.isChecked()
+        self.censored_preview.setChecked(False)
+        self.censored_preview.setText('Original audio')
+        if checked and switch and self.selected_path():
+            self.switch_playback_source(self.selected_path())
+            self.set_status('Preview reset to original audio. Enable censored audio to hear your changes.')
+        if not switch:
+            self.preview_restore = None
+
+    def toggle_censored_preview(self):
+        if not self.censored_preview.isChecked():
+            self.switch_playback_source(self.selected_path())
+            self.censored_preview.setText('Original audio')
+            return
+        if self.process or not self.state or not self.state['events']:
+            self.invalidate_preview()
+            return
+        self.preview_was_playing = self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        if self.preview_file and Path(self.preview_file).is_file():
+            self.switch_playback_source(self.preview_file)
+            self.censored_preview.setText('Censored audio')
+            return
+        self.player.pause()
+        self.censored_preview.setText('Preparing censored audio…')
+        self.start_job({'action': 'preview', 'preview_id': uuid4().hex, 'video': self.state['video'], 'state': self.state,
+                        'config': dict(self.config, censor_mode=self.mode.currentData())})
+        if self.process is None:
+            self.invalidate_preview()
+
+    def set_time_estimate(self, duration, backend=None):
+        config = self.job.get('config', self.config)
+        backend = backend or config.get('backend', 'auto')
+        if backend == 'auto':
+            backend = 'cuda' if self.cuda_available else 'vulkan' if self.devices else 'cpu'
+        self.time_estimate = RemainingTime(self.job.get('action'), duration, config, backend) if duration > 0 else None
+
+    def refresh_elapsed(self, finished=False):
+        if self.job_started is None:
+            return
+        elapsed = max(0, time.monotonic() - self.job_started)
+        self.elapsed_label.setText(f'Elapsed: {format_duration(int(elapsed))}')
+        if finished or self.job.get('action') == 'probe':
+            self.remaining_label.clear()
+            return
+        remaining = self.time_estimate.remaining() if self.time_estimate else None
+        if remaining is not None:
+            # Round estimates to five seconds; elapsed time remains second-accurate.
+            remaining = max(5, int((remaining + 4.999) // 5) * 5)
+            self.remaining_label.setText(f'About {format_duration(remaining)} remaining')
+        else:
+            self.remaining_label.setText('Reading video length…' if self.job.get('action') in ('analyze', 'render', 'preview') else 'Estimating download time…')
+
     def selected_path(self):
         row = self.queue.currentRow()
         return self.queue_paths[row] if 0 <= row < len(self.queue_paths) else None
@@ -897,6 +1095,8 @@ class MainWindow(QMainWindow):
         self.queue.setEnabled(not busy)
         self.render_btn.setEnabled(not busy and bool(self.state and self.state['events']))
         self.table.setEnabled(not busy)
+        self.mode.setEnabled(not busy)
+        self.censored_preview.setEnabled(not busy and bool(self.state and self.state['events']))
         self.cancel_btn.setEnabled(busy)
         self.scissors.setEnabled(not busy and self.state is not None and self.mark_start is None)
         self.mark_panel.setEnabled(not busy)
@@ -919,6 +1119,7 @@ class MainWindow(QMainWindow):
     def dropEvent(self, event):
         self.add_paths([url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()])
     def select_video(self, row):
+        self.invalidate_preview(switch=False)
         self.cancel_mark()
         path = self.selected_path()
         if not path:
@@ -936,7 +1137,8 @@ class MainWindow(QMainWindow):
         for row, item in enumerate(events):
             for col, value in enumerate([clock(item['start']), clock(item['end']), item['matched']]):
                 self.table.setItem(row, col, QTableWidgetItem(value))
-        self.region_count.setText(f'{len(events)} censor regions' if self.state else 'Censor regions')
+        self.region_count.setText(f"{len(events)} censor {'region' if len(events) == 1 else 'regions'}" if self.state else 'Censor regions')
+        self.refresh_transcript()
         self.timeline.events = events
         self.timeline.update()
     def select_region(self):
@@ -947,6 +1149,7 @@ class MainWindow(QMainWindow):
             self.end.setValue(item['end'])
             self.player.setPosition(round(item['start'] * 1000))
     def save_review(self):
+        self.invalidate_preview()
         if self.state and self.state_path:
             try:
                 write_json(Path(self.state_path), self.state)
@@ -981,12 +1184,16 @@ class MainWindow(QMainWindow):
             del self.state['events'][row]
             self.save_review()
     def toggle_play(self):
+        if self.process and self.job.get('action') == 'preview':
+            return
         self.preview_end = None
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
         else:
             self.player.play()
     def preview_region(self):
+        if self.process and self.job.get('action') == 'preview':
+            return
         row = self.table.currentRow()
         if self.state and row >= 0:
             item = self.state['events'][row]
@@ -1038,6 +1245,7 @@ class MainWindow(QMainWindow):
         dialog.download_requested.connect(lambda model: self.start_job({'action': 'download', 'model': model}))
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.config = dialog.config
+            self.invalidate_preview()
             self.set_status('Settings saved. Analyze again to apply detection changes.')
     def open_outputs(self):
         path = Path(self.config.get('export_path') or ROOT / 'outputs' / 'censored').expanduser()
@@ -1054,7 +1262,7 @@ class MainWindow(QMainWindow):
         local = json.loads(local_path.read_text(encoding='utf-8')) if local_path.exists() else {}
         python = Path(local.get('python', str(ROOT / 'venv' / 'Scripts' / 'python.exe')))
         if not python.is_file():
-            self.set_status('Python environment missing. Follow SETUP-ALPHA.md to finish setup.')
+            self.set_status('Python environment missing. Open Runtime setup to finish installation.')
             return
         path = ROOT / 'cache' / 'jobs' / f'{uuid4().hex}.json'
         write_json(path, job)
@@ -1077,8 +1285,12 @@ class MainWindow(QMainWindow):
         process.failure.connect(self.process_error)
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
+        self.job_started = time.monotonic()
+        duration = job.get('state', {}).get('duration', self.player.duration() / 1000)
+        self.set_time_estimate(duration)
+        self.refresh_elapsed()
         self.progress.setFormat("%p% · estimated" if job["action"] == "analyze" else "%p%")
-        self.hardware.setText({"probe": "Getting ready…", "analyze": "Analyzing", "render": "Exporting", "download": "Downloading"}[job["action"]])
+        self.hardware.setText({"probe": "Getting ready…", "analyze": "Analyzing", "render": "Exporting", "preview": "Preparing preview", "download": "Downloading"}[job["action"]])
         self.set_status('Checking graphics…' if job['action'] == 'probe' else 'Starting…')
         self.update_controls()
         process.start()
@@ -1107,13 +1319,29 @@ class MainWindow(QMainWindow):
                 match = re.search(r'(\d+)%', data['message'])
                 if match:
                     self.progress.setValue(min(99, int(match.group(1))))
+            if self.time_estimate and data.get('phase'):
+                self.time_estimate.observe(data['phase'], data.get('phase_percent', 0))
+            self.refresh_elapsed()
+        elif kind == 'estimate':
+            self.set_time_estimate(float(data['duration']), data.get('backend'))
+            self.refresh_elapsed()
+        elif kind == 'previewed':
+            if self.cancelled:
+                return
+            self.preview_file = data['output']
+            self.received_result = True
+            self.switch_playback_source(data['output'])
+            self.censored_preview.setText('Censored audio')
+            self.set_status('Censored preview ready. Click Censored audio to switch back to the original.')
         elif kind == 'hardware':
+            self.cuda_available = data.get('cuda', False)
             self.devices = data['vulkan']
             self.hardware.setText('Ready')
             self.hardware.setToolTip('Choose your graphics card in Settings.')
             self.received_result = True
             self.set_status('Ready. Choose acceleration in Settings, then add a video.')
         elif kind == 'review':
+            self.invalidate_preview()
             self.state, self.state_path = data['state'], data['state_path']
             self.reviews[self.state['video']] = (self.state, self.state_path)
             self.received_result = True
@@ -1138,15 +1366,25 @@ class MainWindow(QMainWindow):
         self.process.deleteLater()
         self.process = None
         self.job_path.unlink(missing_ok=True)
+        if self.job.get('action') == 'preview' and self.job.get('preview_id'):
+            partial = ROOT / 'cache' / 'previews' / (self.job['preview_id'] + '.partial.mkv')
+            try:
+                partial.unlink(missing_ok=True)
+            except OSError:
+                pass  # Another process may still be releasing a file handle.
         self.progress.setRange(0, 100)
         success = code == 0 and self.received_result and not self.cancelled and not self.worker_error
+        self.refresh_elapsed(finished=True)
+        self.job_started = None
+        if self.job.get('action') == 'preview' and not success:
+            self.invalidate_preview()
         self.progress.setFormat("%p%")
         self.progress.setValue(100 if success else 0)
         self.hardware.setText("Ready" if self.job.get("action") == "probe" and success else "Complete" if success else "Cancelled" if self.cancelled else "Needs attention")
         if self.cancelled:
             self.set_status('Cancelled. Original video preserved.')
             self.pending.clear()
-        elif code != 0 or not self.received_result:
+        elif code != 0 or not self.received_result or self.worker_error:
             self.pending.clear()
             self.set_status(self.worker_error or 'Processing stopped unexpectedly. See logs/last-job.log for details.')
         self.update_controls()
