@@ -1,3 +1,12 @@
+# JuicyCensor 2.0.2
+
+- Fixed WinError 1314 when downloading speech models on Windows accounts without
+  symbolic-link privileges. Model caching now uses ordinary files on Windows.
+- Reuses existing downloads and the 2.0 processing runtime; no new CUDA or Python
+  installation is required for this update.
+- Install over the existing application folder, then retry the failed analysis or
+  setup. Settings and custom word lists are preserved.
+
 # JuicyCensor 2.0.1
 
 - Corrected the sidebar badge and first-run setup title to display 2.0.1.

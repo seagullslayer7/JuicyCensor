@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="assets/readme-banner.svg" alt="JuicyCensor — Filter the Juice. Detect, review, export." width="960">
+  <img src="assets/readme-banner.svg" alt="JuicyCensor â€” Filter the Juice. Detect, review, export." width="960">
 </p>
 
 <p align="center">
-  <a href="https://github.com/seagullslayer7/JuicyCensor/releases/latest"><strong>Download for Windows</strong></a> ·
-  <a href="#first-launch">Getting started</a> ·
-  <a href="#settings-and-export">Export settings</a> ·
+  <a href="https://github.com/seagullslayer7/JuicyCensor/releases/latest"><strong>Download for Windows</strong></a> Â·
+  <a href="#first-launch">Getting started</a> Â·
+  <a href="#settings-and-export">Export settings</a> Â·
   <a href="https://github.com/seagullslayer7/JuicyCensor/issues">Report an issue</a>
 </p>
 
@@ -16,18 +16,18 @@ lets you review their timing, and exports a censored copy.
 | :---: | :---: | :---: |
 | Find your chosen words with NVIDIA, AMD/Vulkan, or CPU processing. | Fine-tune regions with scissors, timeline zoom, and precise timestamps. | Choose your destination, censor style, quality, and encoder. |
 
-![JuicyCensor video review interface](assets/review-2.0.1.png)
+![JuicyCensor video review interface](assets/review-2.0.2.png)
 
 ## Download
 
 Open [GitHub Releases](https://github.com/seagullslayer7/JuicyCensor/releases/latest)
 and expand **Assets**:
 
-- **Setup.exe** — recommended. Choose the installation
+- **Setup.exe** â€” recommended. Choose the installation
   folder, optionally create a desktop shortcut, and launch the app.
-- **Portable.zip** — extract the entire ZIP into a
+- **Portable.zip** â€” extract the entire ZIP into a
   writable folder and open **JuicyCensor.exe**. Keep the folder together.
-- **SHA256SUMS.txt** — checksums for the release downloads.
+- **SHA256SUMS.txt** â€” checksums for the release downloads.
 
 GitHub's automatic **Source code** ZIP is for developers; it is not the portable app.
 The installer and portable ZIP require internet for first-run runtime/model setup.
@@ -87,7 +87,7 @@ backends report an error. Vulkan uses the GPU for transcription and CPU for alig
 The starter `.en` models are English-only; choose a multilingual model for other languages.
 
 **Export:** Choose a destination with Browse, filename spacing, MP4 or Matroska,
-video/audio encoders, quality, a 480p–4K resolution limit, frame rate and encoding speed.
+video/audio encoders, quality, a 480pâ€“4K resolution limit, frame rate and encoding speed.
 Changing an individual option switches the preset to Custom. Changes apply to the next
 export without reanalyzing. Resolution limits preserve aspect ratio and do not upscale.
 
@@ -113,6 +113,21 @@ See [VALIDATION.md](VALIDATION.md) for tested hardware and known limitations.
 
 The release is not code-signed; Windows may show an unknown-publisher warning. Verify
 the download's checksum against SHA256SUMS.txt on the release page.
+
+## Updating to 2.0.2
+
+Version 2.0.2 fixes **WinError 1314** during speech-model downloads on Windows.
+Administrator privileges and Developer Mode are not required for model downloads.
+
+Close the app, download the latest **Setup.exe**, and run it using the same installation
+folder. The installer replaces application files while preserving settings, word lists,
+and downloaded models. Reopen the app and retry the failed analysis or setup.
+Downloading the installer alone does not apply the update.
+
+For portable installations, extract the new ZIP to a separate folder, then copy its
+contents into the existing application folder. Replace application files, but keep your
+existing `config.json`, `banned_words.txt`, and `banned_phrases.txt` when prompted.
+Do not delete the existing `cache`, `models`, `runtime`, or `venv` folders.
 
 ## Files, updates and uninstalling
 

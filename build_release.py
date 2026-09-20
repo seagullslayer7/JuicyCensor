@@ -40,7 +40,7 @@ def main():
     if not compiled:
         subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', str(ROOT/'JuicyCensor.spec')], cwd=ROOT, check=True)
         compiled = ROOT / 'dist/JuicyCensor'
-    payload = output / 'JuicyCensor-2.0.1-Windows-x64'
+    payload = output / 'JuicyCensor-2.0.2-Windows-x64'
     if payload.exists():
         raise SystemExit('Use an empty release output folder to avoid carrying stale files into a release.')
     shutil.copytree(compiled, payload)
@@ -50,14 +50,14 @@ def main():
         shutil.copytree(ROOT / name, payload / name)
     # This allowlist intentionally excludes environments, models, caches, local
     # overrides, personal exports, Git metadata and build files.
-    zip_folder(payload, output/'JuicyCensor-2.0.1-Windows-x64-Portable.zip', payload.name)
-    source = output / 'JuicyCensor-2.0.1-Source'
+    zip_folder(payload, output/'JuicyCensor-2.0.2-Windows-x64-Portable.zip', payload.name)
+    source = output / 'JuicyCensor-2.0.2-Source'
     source.mkdir()
     for name in PAYLOAD_FILES + SOURCE_EXTRA:
         shutil.copy2(ROOT/name, source/name)
     for name in PAYLOAD_DIRS + ['installer', 'tests', '.github']:
         shutil.copytree(ROOT/name, source/name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-    zip_folder(source, output/'JuicyCensor-2.0.1-Source.zip', source.name)
+    zip_folder(source, output/'JuicyCensor-2.0.2-Source.zip', source.name)
     subprocess.run([str(args.iscc.resolve()), f'/DPayloadDir={payload}', f'/DReleaseDir={output}',
                     str(ROOT/'installer/JuicyCensor.iss')], check=True, cwd=ROOT)
     files = sorted([*output.glob('*.zip'), *output.glob('*Setup.exe')])

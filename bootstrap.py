@@ -10,7 +10,7 @@ import threading
 import urllib.request
 import zipfile
 
-# Runtime compatibility version; unchanged for the UI-only 2.0.1 patch.
+# Runtime compatibility version; unchanged for the 2.0.2 cache fix.
 VERSION = '2.0.0'
 
 
@@ -96,7 +96,7 @@ class Installer:
             partial.replace(archive)
         if not valid():
             raise RuntimeError('Download checksum mismatch: ' + name)
-        self.progress('Verified ' + name + '; extractingâ€¦')
+        self.progress('Verified ' + name + '; extractingÃ¢â‚¬Â¦')
         with zipfile.ZipFile(archive) as bundle:
             for item in bundle.infolist():
                 self.check_cancel()
@@ -143,7 +143,7 @@ class Installer:
         from install_runtime import VULKAN_URL, VULKAN_SHA, FFMPEG_URL, FFMPEG_SHA
         self.archive(FFMPEG_URL, FFMPEG_SHA, 'ffmpeg-shared.zip', root / 'tools/ffmpeg-shared', True)
         self.archive(VULKAN_URL, VULKAN_SHA, 'whisper-vulkan.zip', root / 'tools/whisper-vulkan')
-        self.progress('Checking the new processing environmentâ€¦')
+        self.progress('Checking the new processing environmentÃ¢â‚¬Â¦')
         self.command([python, '-B', root / 'setup_verify.py', *(['--models'] if models else [])])
         self.check_cancel()
         temporary = marker.with_suffix('.tmp')

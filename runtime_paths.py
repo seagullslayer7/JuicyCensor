@@ -6,6 +6,22 @@ from pathlib import Path
 
 _dll_handles = []
 
+def configure_model_cache():
+    """Use the Hub's regular-file cache on Windows without symlink privileges."""
+    if os.name != 'nt':
+        return
+    try:
+        from huggingface_hub import file_download
+    except ImportError:
+        return  # The frozen GUI does not include processing dependencies.
+    # A successful probe does not guarantee later link creation. WinError 1314
+    # is an OSError missed by the Hub's PermissionError fallback. Select its
+    # existing copy/move path; do not modify the library on disk or Windows.
+    def regular_files_only(cache_dir=None):
+        return False
+    file_download.are_symlinks_supported = regular_files_only
+
+
 def configure_runtime():
     root = Path(__file__).resolve().parent
     local_path = root / "runtime.local.json"
@@ -26,21 +42,4 @@ def configure_runtime():
                 os.environ["PATH"] = value + os.pathsep + os.environ.get("PATH", "")
             if os.name == "nt" and hasattr(os, "add_dll_directory"):
                 _dll_handles.append(os.add_dll_directory(value))
-    if os.name == 'nt':
-        # Some restricted Windows folders reject the Hub's temporary symlink
-        # probe itself. Use its supported file-copy path in that case.
-        try:
-            from huggingface_hub import file_download
-            if not getattr(file_download.are_symlinks_supported, '_juicy_safe', False):
-                probe = file_download.are_symlinks_supported
-                def safe_probe(cache_dir=None):
-                    try:
-                        return probe(cache_dir)
-                    except OSError:
-                        location = str(Path(cache_dir or file_download.constants.HF_HUB_CACHE).expanduser().resolve())
-                        file_download._are_symlinks_supported_in_dir[location] = False
-                        return False
-                safe_probe._juicy_safe = True
-                file_download.are_symlinks_supported = safe_probe
-        except ImportError:
-            pass
+    configure_model_cache()

@@ -1,3 +1,12 @@
+# JuicyCensor 2.0.2 validation
+
+- Regression tests exercise the pinned Hugging Face Hub implementation with symlink
+  creation denied: existing blobs copy correctly and new downloads move into snapshots.
+- Repeated cache configuration is safe and missing files still report errors.
+- Downloaded the real large-v3 config with symbolic links denied, reused it offline,
+  and retried the failed file in an existing cache successfully.
+- All 11 backend/cache tests passed, along with UI version and runtime-reuse checks.
+
 # JuicyCensor 2.0.1 validation
 
 Validated locally on Windows on 2026-09-20.
@@ -42,5 +51,6 @@ encoder selection tests a few frames before rendering; later failures are still 
 No personal videos or local model/environment overrides are included in the release
 payload. The release builder uses an allowlist. Setup downloads dependencies directly
 from publishers and checks pinned runtime/package hashes.
+
 
 
