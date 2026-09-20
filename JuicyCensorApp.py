@@ -256,7 +256,7 @@ class Settings(QDialog):
         self.vmodel.setCurrentText(config.get('vulkan_model', 'base.en'))
         form.addRow('Vulkan model', self.vmodel)
         form.addRow('', button('Download Vulkan model', self.download))
-        note = QLabel('Base is fast; larger models need more memory and download space.\nVulkan uses the GPU for transcription and the CPU for word alignment.\nRX 9060 XT validation is pending; support varies with drivers and hardware.')
+        note = QLabel('The base.en model is fast and compact. Larger models require more memory and storage.\nVulkan uses your GPU for transcription and your CPU to align words with the audio.')
         note.setWordWrap(True)
         note.setObjectName('muted')
         form.addRow(note)
@@ -271,10 +271,10 @@ class Settings(QDialog):
             widget.setSingleStep(.02)
             widget.setSuffix(' s')
             widget.setValue(config.get(key, .1))
-        form.addRow('Padding before word', self.pre)
-        form.addRow('Padding after word', self.post)
-        self.backend.setToolTip('Acceleration for speech analysis. Choose the video export encoder separately in Export.')
-        self.gpu.setToolTip('Graphics card for Vulkan speech transcription; this does not select the export encoder.')
+        form.addRow('Padding before each word', self.pre)
+        form.addRow('Padding after each word', self.post)
+        self.backend.setToolTip('Choose how speech analysis runs. Select the video encoder separately on the Export tab.')
+        self.gpu.setToolTip('Choose the graphics card used for Vulkan speech analysis. This setting does not change the export encoder.')
         self.model.setToolTip('Speech model for NVIDIA CUDA or CPU analysis. Larger models use more memory and take longer.')
         self.vmodel.setToolTip('Speech model for Vulkan analysis. Download the selected model before using it.')
         self.language.setToolTip('Language of the spoken audio. Models ending in .en support English only.')
@@ -286,7 +286,7 @@ class Settings(QDialog):
         export_form.setVerticalSpacing(12)
         path_row = QHBoxLayout()
         self.export_path = QLineEdit(str(config.get('export_path') or ROOT / 'outputs' / 'censored'))
-        self.export_path.setToolTip('Folder for exported videos. It is created on export if needed. Reports stay in the app reports folder.')
+        self.export_path.setToolTip('Choose where exported videos are saved. The folder is created when needed. Reports are saved in outputs/reports inside the app folder.')
         path_row.addWidget(self.export_path, 1)
         browse = button('Browse…', self.browse_export_path)
         browse.setToolTip('Choose where to save exported videos')
@@ -294,7 +294,7 @@ class Settings(QDialog):
         export_form.addRow('Export path', path_row)
         self.no_spaces = QCheckBox('Use filenames without spaces')
         self.no_spaces.setChecked(bool(config.get('export_no_spaces', False)))
-        self.no_spaces.setToolTip('Replace spaces with underscores. Unique suffixes keep existing files safe.')
+        self.no_spaces.setToolTip('Replace spaces in exported filenames with underscores. A unique suffix prevents existing files from being overwritten.')
         export_form.addRow('', self.no_spaces)
         self.export_controls = {}
         choices = [
@@ -336,16 +336,16 @@ class Settings(QDialog):
             'export_encoder': 'Automatic selects working H.264 hardware, then CPU. HEVC and AV1 can save space but need compatible players. Manual selections are tested before export. Copy preserves the original video stream.',
             'export_format': 'MP4 is widely compatible. Matroska supports Opus audio. Selecting MP4 switches Opus to AAC.',
             'export_audio_encoder': 'AAC works with MP4 and Matroska. Choosing Opus switches the format to Matroska.',
-            'export_video_quality': 'Original copies the video without quality loss. High, Balanced and Smaller file re-encode it. Targets are approximate and differ between encoders.',
-            'export_resolution': 'Fit within the selected dimensions without upscaling or stretching. Changing this enables encoding.',
-            'export_fps': 'Original keeps source timing. Other choices may drop or duplicate frames. Changing this enables encoding.',
-            'export_preset': 'Slower encoding favors compression; behavior depends on the encoder. Changing this enables encoding.',
+            'export_video_quality': 'Original preserves the existing video stream. High, Balanced, and Smaller file re-encode the video. Results vary by encoder.',
+            'export_resolution': 'Limit the output dimensions without upscaling or stretching. Changing this setting enables video re-encoding.',
+            'export_fps': 'Original keeps the source frame rate. Other choices may drop or duplicate frames and require video re-encoding.',
+            'export_preset': 'Slower encoding can produce smaller files at similar quality. Results depend on the encoder. Changing this setting enables video re-encoding.',
             'export_audio_bitrate': 'Original matches the source audio bitrate when reported (8–512 kbps); otherwise uses 192 kbps. Censoring still re-encodes audio, so Original is not lossless. Higher fixed bitrates use more space.'}
         for key, combo in self.export_controls.items():
             combo.setToolTip(tips[key])
             if key != 'export_quality':
                 combo.currentIndexChanged.connect(lambda _, key=key: self.custom_export(key))
-        export_note = QLabel('Choose where and how to save your censored copy. Original files stay untouched.\n\nAutomatic uses a working H.264 hardware encoder, with CPU fallback. HEVC and AV1 are available as manual choices.\n\nEditing an option switches to Custom. Export settings apply without analyzing again.')
+        export_note = QLabel('Choose where and how to save your censored copy. Original files remain unchanged.\n\nAutomatic selects an available H.264 hardware encoder and falls back to the CPU. You can also select HEVC or AV1 where supported.\n\nChanging an option selects the Custom preset. Export settings apply without analyzing the video again.')
         export_note.setWordWrap(True)
         export_note.setObjectName('muted')
         export_form.addRow(export_note)

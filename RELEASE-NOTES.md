@@ -1,5 +1,8 @@
 # JuicyCensor 2.0.3
 
+- Polished Settings labels and explanations, and removed the RX 9060 XT pending-validation notice following user confirmation.
+- Updated visible app/version labels and README screenshots for 2.0.3.
+
 - Recover from Windows error 448 when uv finishes downloading Python but cannot
   create its optional minor-version directory link.
 - Verify the exact Python version, 64-bit architecture, and required standard-library

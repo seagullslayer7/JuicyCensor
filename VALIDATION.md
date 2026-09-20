@@ -1,5 +1,8 @@
 # JuicyCensor 2.0.3 validation
 
+- AMD Radeon RX 9060 XT Vulkan support is confirmed by a user on a separate PC.
+  This is community verification, distinct from the local automated tests below.
+
 - All 17 backend/cache/setup tests passed, including successful recovery, a missing or
   invalid interpreter, unrelated errors, successful normal installs, and cancellation.
 - A real child process emitted the reported uv error and exited unsuccessfully. Setup
@@ -52,8 +55,8 @@ Validated locally on Windows on 2026-09-19.
 - Audio Original targets the reported source bitrate; the 192 kbps fallback and preset
   transitions were tested. It does not promise lossless processed audio.
 
-This is not a certification of every PC or video format. RX 9060 XT, Intel hardware
-encoding and a separate physical clean PC have not been tested. Long-video, accessibility,
+This is not a certification of every PC or video format. Intel hardware encoding
+and a separate physical clean PC have not been tested by the maintainer. Long-video, accessibility,
 HDR color conversion and broad driver coverage need further validation. Automatic
 encoder selection tests a few frames before rendering; later failures are still possible.
 
