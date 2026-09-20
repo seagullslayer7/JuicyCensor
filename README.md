@@ -12,7 +12,7 @@
 Find words and phrases in your videos, fine-tune the censor regions, and export a filtered copy. Processing runs locally on your PC.
 
 <p align="center">
-  <img src="assets/review-2.0.2.png" alt="JuicyCensor video review workspace" width="900">
+  <img src="assets/review-2.0.3.png" alt="JuicyCensor video review workspace" width="900">
 </p>
 
 ## Quick start
@@ -85,6 +85,8 @@ MP4 with AAC offers broad compatibility. Opus uses Matroska. HEVC and AV1 requir
 ## Updates and help
 
 **Updating:** close the app and run the latest installer into the **same folder**. It preserves settings, word lists, and downloaded models.
+
+**Error 448 during Python setup?** Update to **2.0.3 or newer**. Setup verifies the downloaded interpreter and continues if only the optional Python version link was blocked.
 
 **WinError 1314 during model download?** Update to **2.0.2 or newer**, then retry. Administrator privileges and Developer Mode are not required.
 

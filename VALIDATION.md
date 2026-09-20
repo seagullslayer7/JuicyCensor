@@ -1,3 +1,12 @@
+# JuicyCensor 2.0.3 validation
+
+- All 17 backend/cache/setup tests passed, including successful recovery, a missing or
+  invalid interpreter, unrelated errors, successful normal installs, and cancellation.
+- A real child process emitted the reported uv error and exited unsuccessfully. Setup
+  captured that output, verified Python 3.12.14 directly, and created a working venv.
+- The original installer's Windows error 448 was simulated; it has not been reproduced
+  under the affected PC's exact security context. No Windows security settings were changed.
+
 # JuicyCensor 2.0.2 validation
 
 - Regression tests exercise the pinned Hugging Face Hub implementation with symlink

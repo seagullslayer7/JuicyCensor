@@ -1,5 +1,7 @@
 """Private, pinned runtime setup. No administrator or system Python required."""
 from __future__ import annotations
+from collections import deque
+import re
 import hashlib
 import json
 import os
@@ -10,7 +12,7 @@ import threading
 import urllib.request
 import zipfile
 
-# Runtime compatibility version; unchanged for the 2.0.2 cache fix.
+# Runtime compatibility version; unchanged for the 2.0.3 setup recovery.
 VERSION = '2.0.0'
 
 
@@ -22,6 +24,12 @@ def ready(root):
                 (root / 'tools/ffmpeg-shared/bin/ffmpeg.exe').is_file())
     except (OSError, ValueError, KeyError):
         return False
+
+
+class SetupCommandError(RuntimeError):
+    def __init__(self, output):
+        super().__init__('A setup command failed. See the setup log above.')
+        self.output = output
 
 
 class Installer:
@@ -61,12 +69,14 @@ class Installer:
         finally:
             if os.name == 'nt' and getattr(sys, 'frozen', False):
                 ctypes.windll.kernel32.SetDllDirectoryW(sys._MEIPASS)
+        output = deque(maxlen=80)
         try:
             for line in self.process.stdout:
+                output.append(line)
                 self.progress(line.rstrip())
                 self.check_cancel()
             if self.process.wait():
-                raise RuntimeError('A setup command failed. See the setup log above.')
+                raise SetupCommandError(''.join(output))
         finally:
             if self.process.poll() is None:
                 self.process.kill()
@@ -96,7 +106,7 @@ class Installer:
             partial.replace(archive)
         if not valid():
             raise RuntimeError('Download checksum mismatch: ' + name)
-        self.progress('Verified ' + name + '; extractingÃ¢â‚¬Â¦')
+        self.progress('Verified ' + name + '; extractingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦')
         with zipfile.ZipFile(archive) as bundle:
             for item in bundle.infolist():
                 self.check_cancel()
@@ -116,6 +126,37 @@ class Installer:
                         self.check_cancel()
                         out.write(data)
 
+    def install_private_python(self, uv, version):
+        python = self.root / 'runtime/python' / f'cpython-{version}-windows-x86_64-none/python.exe'
+        try:
+            self.command([uv, 'python', 'install', version, '--no-bin', '--no-registry'])
+        except SetupCommandError as error:
+            # uv may have installed Python completely before failing to create
+            # its optional minor-version junction. Recover only this exact case.
+            recoverable = (
+                os.name == 'nt'
+                and 'Failed to create Python minor version link directory' in error.output
+                and re.search(r'\bos error 448\b', error.output, re.IGNORECASE)
+            )
+            if not recoverable:
+                raise
+            self.check_cancel()
+            if not python.is_file():
+                raise
+            self.progress('Windows blocked the Python version shortcut. Checking the installed interpreter directly...')
+            probe = (
+                'import sys, struct, platform, ssl, venv, encodings, ctypes; '
+                f'assert platform.python_version() == {version!r}, "Unexpected Python version"; '
+                'assert platform.python_implementation() == "CPython", "Expected CPython"; '
+                'assert struct.calcsize("P") == 8, "Expected 64-bit Python"; '
+                'ssl.create_default_context(); '
+                'print("Private Python verified; continuing without the optional version shortcut.")'
+            )
+            # A failed probe still aborts setup. All package/tool/model checks
+            # must also succeed before install() writes the ready marker.
+            self.command([python, '-I', '-c', probe])
+        return python
+
     def install(self, profile='cpu', models=True):
         if profile not in ('cpu', 'cuda'):
             raise ValueError('Unknown runtime profile')
@@ -129,8 +170,7 @@ class Installer:
             if hashlib.file_digest(stream, 'sha256').hexdigest() != manifest['uv_sha256']:
                 raise RuntimeError('Bundled installer helper checksum mismatch')
         self.progress('Installing private Python ' + manifest['python'])
-        self.command([uv, 'python', 'install', manifest['python'], '--no-bin', '--no-registry'])
-        python = root / 'runtime/python' / f"cpython-{manifest['python']}-windows-x86_64-none/python.exe"
+        python = self.install_private_python(uv, manifest['python'])
         if not (root / 'venv/Scripts/python.exe').exists():
             self.command([uv, 'venv', root / 'venv', '--python', python, '--relocatable'])
         python = root / 'venv/Scripts/python.exe'
@@ -143,7 +183,7 @@ class Installer:
         from install_runtime import VULKAN_URL, VULKAN_SHA, FFMPEG_URL, FFMPEG_SHA
         self.archive(FFMPEG_URL, FFMPEG_SHA, 'ffmpeg-shared.zip', root / 'tools/ffmpeg-shared', True)
         self.archive(VULKAN_URL, VULKAN_SHA, 'whisper-vulkan.zip', root / 'tools/whisper-vulkan')
-        self.progress('Checking the new processing environmentÃ¢â‚¬Â¦')
+        self.progress('Checking the new processing environmentÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦')
         self.command([python, '-B', root / 'setup_verify.py', *(['--models'] if models else [])])
         self.check_cancel()
         temporary = marker.with_suffix('.tmp')

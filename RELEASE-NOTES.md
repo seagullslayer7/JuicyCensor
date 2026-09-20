@@ -1,3 +1,13 @@
+# JuicyCensor 2.0.3
+
+- Recover from Windows error 448 when uv finishes downloading Python but cannot
+  create its optional minor-version directory link.
+- Verify the exact Python version, 64-bit architecture, and required standard-library
+  modules before continuing through the direct interpreter path.
+- Keep other setup failures and cancellation visible; incomplete setup is never marked ready.
+- Reuse the existing 2.0 processing runtime. Existing installations do not need to
+  download Python, packages, or models again just to apply this patch.
+
 # JuicyCensor 2.0.2
 
 - Fixed WinError 1314 when downloading speech models on Windows accounts without
