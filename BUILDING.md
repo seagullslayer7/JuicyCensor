@@ -1,4 +1,4 @@
-# Building JuicyCensor 2.0
+# Building JuicyCensor 2.0.1
 
 Use Windows x64, Python 3.12.10 for the frozen GUI, PyInstaller 6.21.0, PySide6 6.11.2,
 and Inno Setup 7.1.0. The private processing environment uses Python 3.12.14.

@@ -2,6 +2,7 @@
 
 Validated locally on Windows on 2026-09-20.
 
+- Verified that the sidebar badge and setup window title display 2.0.1.
 - Checked centered Start/End controls, timestamp parsing, and increment buttons.
 - Verified the new subtitle and visually inspected the app screenshot and README banner.
 - Confirmed the existing 2.0.0 processing runtime remains ready without reinstalling.
@@ -41,4 +42,5 @@ encoder selection tests a few frames before rendering; later failures are still 
 No personal videos or local model/environment overrides are included in the release
 payload. The release builder uses an allowlist. Setup downloads dependencies directly
 from publishers and checks pinned runtime/package hashes.
+
 

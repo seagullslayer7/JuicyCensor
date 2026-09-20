@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QComboBox, QCheckBox,
                                QPlainTextEdit, QPushButton, QProgressBar, QMessageBox)
@@ -24,7 +25,8 @@ class SetupWizard(QDialog):
     def __init__(self, root, parent=None):
         super().__init__(parent)
         self.root, self.thread = Path(root), None
-        self.setWindowTitle('JuicyCensor 2.0 · First-run setup')
+        version = json.loads((self.root / 'release-manifest.json').read_text(encoding='utf-8'))['version']
+        self.setWindowTitle(f'JuicyCensor {version} · First-run setup')
         self.resize(700, 590)
         layout = QVBoxLayout(self)
         title = QLabel('Let’s get JuicyCensor ready')

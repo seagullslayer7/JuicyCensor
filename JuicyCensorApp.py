@@ -543,7 +543,7 @@ class MainWindow(QMainWindow):
         logo.setObjectName('logo')
         layout.addWidget(OrangeMark())
         layout.addWidget(logo)
-        tag = QLabel('2.0  /  LOCAL PROCESSING')
+        tag = QLabel(f'{VERSION}  /  LOCAL PROCESSING')
         tag.setObjectName('muted')
         tag.setStyleSheet('font-size: 10px; letter-spacing: 1px')
         layout.addWidget(tag)
