@@ -11,17 +11,27 @@ from uuid import uuid4
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
 if not getattr(sys, 'frozen', False):
     sys.path.insert(0, str(ROOT / 'vendor'))
-from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal, QPoint
-from PySide6.QtGui import QColor, QDesktopServices, QPainter, QPen, QFont, QValidator, QIcon, QPixmap, QPolygon
+    _local_file = ROOT / 'runtime.local.json'
+    if _local_file.exists():
+        _ui_vendor = json.loads(_local_file.read_text(encoding='utf-8')).get('ui_vendor')
+        if _ui_vendor:
+            sys.path.insert(0, _ui_vendor)
+from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal, QPoint, QSize
+from PySide6.QtGui import QColor, QDesktopServices, QPainter, QPen, QFont, QValidator, QIcon, QPixmap, QPolygon, QAction, QKeySequence
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QListWidget, QFileDialog, QFrame, QSplitter, QTableWidget,
+    QLabel, QPushButton, QListWidget, QListWidgetItem, QFileDialog, QFrame, QSplitter, QSplitterHandle, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView, QDoubleSpinBox, QProgressBar,
-    QComboBox, QDialog, QFormLayout, QPlainTextEdit, QTabWidget, QDialogButtonBox, QMessageBox, QSlider, QStyle, QMenu, QWidgetAction, QScrollBar, QStyleOptionSpinBox, QStyleOptionComboBox, QLineEdit, QCheckBox, QScrollArea)
+    QComboBox, QDialog, QFormLayout, QPlainTextEdit, QTabWidget, QDialogButtonBox, QMessageBox, QSlider, QStyle, QMenu, QWidgetAction, QScrollBar, QStyleOptionSpinBox, QStyleOptionComboBox, QLineEdit, QCheckBox, QScrollArea, QStackedWidget, QTabBar, QMenuBar, QDockWidget, QSizePolicy)
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from processing_time import RemainingTime, format_duration
+from audio_timeline import Timeline
+from audio_waveform import WaveformLoader
+from ui_icons import decorate_text, decorate, tool_icon
+from appearance import color as theme_color, apply_theme, load_preferences, AppearanceDialog
 
-VERSION = '2.1.0'
+VERSION = json.loads((ROOT / 'release-manifest.json').read_text(encoding='utf-8'))['version']
+from languages import LANGUAGES, MODELS
 EXTENSIONS = {'.mp4', '.mkv', '.mov', '.avi', '.webm', '.m4v'}
 
 
@@ -83,6 +93,7 @@ def button(text, slot, primary=False):
     widget.setToolTip(tips.get(text, text))
     widget.clicked.connect(slot)
     widget.setCursor(Qt.CursorShape.PointingHandCursor)
+    decorate_text(widget, text, primary)
     return widget
 
 
@@ -95,7 +106,7 @@ class CitrusComboBox(QComboBox):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor('#ffc563' if self.isEnabled() else '#858971'))
+        painter.setBrush(theme_color('accent_text' if self.isEnabled() else 'disabled'))
         x, y = rect.center().x(), rect.center().y()
         painter.drawPolygon(QPolygon([QPoint(x-4,y-2),QPoint(x+4,y-2),QPoint(x,y+3)]))
 
@@ -108,7 +119,7 @@ class TriangleSpinBox(QDoubleSpinBox):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor('#ffc563' if self.isEnabled() else '#858971'))
+        painter.setBrush(theme_color('accent_text' if self.isEnabled() else 'disabled'))
         for control, direction in ((QStyle.SubControl.SC_SpinBoxUp, -1), (QStyle.SubControl.SC_SpinBoxDown, 1)):
             rect = self.style().subControlRect(QStyle.ComplexControl.CC_SpinBox, option, control, self)
             x, y = rect.center().x(), rect.center().y()
@@ -145,83 +156,6 @@ class TimestampEdit(TriangleSpinBox):
         return state, text, pos
 
 
-class Timeline(QWidget):
-    seek = Signal(float)
-    view_changed = Signal()
-    def __init__(self):
-        super().__init__()
-        self.duration, self.position, self.events = 0, 0, []
-        self.draft_start = None
-        self.zoom, self.offset = 1., 0.
-        self.setMinimumHeight(62)
-        self.setToolTip('Click to seek. Scroll to zoom around the pointer. Drag the bar below to pan.')
-    @property
-    def span(self):
-        return self.duration / self.zoom if self.duration else 0
-    def set_view(self, zoom, offset):
-        self.zoom = max(1., min(zoom, max(1., self.duration)))
-        self.offset = max(0., min(offset, self.duration - self.span))
-        self.update()
-        self.view_changed.emit()
-    def zoom_by(self, factor, fraction=None):
-        if not self.duration:
-            return
-        if fraction is None:
-            fraction = max(0., min(1., (self.position-self.offset) / self.span))
-        anchor = self.offset + fraction * self.span
-        zoom = max(1., min(self.zoom * factor, max(1., self.duration)))
-        self.set_view(zoom, anchor - fraction * self.duration / zoom)
-    def pan(self, value):
-        self.set_view(self.zoom, value / 10000 * (self.duration - self.span))
-    def follow(self, position):
-        self.position = position
-        if self.span and not self.offset <= position <= self.offset + self.span:
-            self.set_view(self.zoom, position - self.span / 2)
-        self.update()
-    def fraction_at(self, x):
-        return max(0., min(1., (x-12) / max(1, self.width()-24)))
-    def time_at(self, x):
-        return self.offset + self.fraction_at(x) * self.span
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        width = max(1, self.width() - 24)
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor('#3b412a'))
-        p.drawRoundedRect(12, 12, width, 22, 6, 6)
-        if self.span:
-            def region(start, end, color):
-                left, right = max(start, self.offset), min(end, self.offset + self.span)
-                if right < left:
-                    return
-                p.setBrush(QColor(color))
-                p.drawRoundedRect(int(12 + (left-self.offset)/self.span*width), 12,
-                                  max(2, int((right-left)/self.span*width)), 22, 3, 3)
-            p.save()
-            p.setClipRect(12, 7, width, 33)
-            for item in self.events:
-                region(item['start'], item['end'], '#ff9f24')
-            if self.draft_start is not None:
-                region(*sorted((self.draft_start, self.position)), '#80be54')
-            if self.offset <= self.position <= self.offset + self.span:
-                p.setPen(QPen(QColor('#fff4dc'), 2))
-                x = int(12 + (self.position-self.offset)/self.span*width)
-                p.drawLine(x, 7, x, 39)
-            p.restore()
-        p.setPen(QColor('#b5b79a'))
-        p.drawText(12, 56, clock(self.offset))
-        p.drawText(self.width() - 108, 56, clock(self.offset + self.span))
-        p.drawText(self.width()//2 - 48, 56, clock(self.position))
-    def mousePressEvent(self, event):
-        if self.duration and event.button() == Qt.MouseButton.LeftButton:
-            self.seek.emit(self.time_at(event.position().x()))
-    def wheelEvent(self, event):
-        if self.duration and event.angleDelta().y():
-            self.zoom_by(2 if event.angleDelta().y() > 0 else .5, self.fraction_at(event.position().x()))
-            event.accept()
-
-
-
 class Settings(QDialog):
     download_requested = Signal(str)
     def __init__(self, parent, config, devices):
@@ -250,20 +184,20 @@ class Settings(QDialog):
         self.gpu.setCurrentIndex(max(0, self.gpu.findData(config.get('vulkan_device', 'auto'))))
         form.addRow('Graphics card', self.gpu)
         self.model = CitrusComboBox()
-        self.model.addItems(['large-v3', 'medium.en', 'small.en', 'base.en'])
+        self.model.addItems(list(MODELS))
         self.model.setCurrentText(config.get('model', 'large-v3'))
         form.addRow('NVIDIA / CPU model', self.model)
         self.vmodel = CitrusComboBox()
-        self.vmodel.addItems(['base.en', 'small.en', 'medium.en', 'large-v3'])
+        self.vmodel.addItems(list(MODELS))
         self.vmodel.setCurrentText(config.get('vulkan_model', 'base.en'))
         form.addRow('Vulkan model', self.vmodel)
         form.addRow('', button('Download Vulkan model', self.download))
-        note = QLabel('The base.en model is fast and compact. Larger models require more memory and storage.\nVulkan uses your GPU for transcription and your CPU to align words with the audio.')
+        note = QLabel('Use base, small, medium, or large-v3 for multiple languages. Models ending in .en are English-only.\nVulkan uses your GPU for transcription and your CPU to align words with the audio.')
         note.setWordWrap(True)
         note.setObjectName('muted')
         form.addRow(note)
         self.language = CitrusComboBox()
-        for label, value in [('English', 'en'), ('Detect language', 'auto'), ('Spanish', 'es'), ('French', 'fr'), ('German', 'de')]:
+        for label, value in LANGUAGES:
             self.language.addItem(label, value)
         self.language.setCurrentIndex(max(0, self.language.findData(config.get('language', 'en'))))
         form.addRow('Language', self.language)
@@ -450,6 +384,11 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: t
 QSlider::groove:horizontal { height: 6px; background: #414a2c; border-radius: 3px; }
 QSlider::sub-page:horizontal { background: #ff9f24; border-radius: 3px; }
 QSlider::handle:horizontal { background: #ffc563; border: 1px solid #ff9f24; width: 14px; margin: -5px 0; border-radius: 7px; }
+QSlider#waveformGain::groove:horizontal { height: 4px; border-radius: 2px; }
+QSlider#waveformGain::sub-page:horizontal { border-radius: 2px; }
+QSlider#waveformGain::handle:horizontal { width: 10px; margin: -4px 0; border-radius: 6px; }
+QSlider#waveformGain::handle:horizontal:hover { background: #ffd18a; border-color: #ffc563; }
+QSlider#waveformGain::handle:horizontal:pressed { background: #ffb647; }
 QPushButton { background: #353a27; border: 1px solid #51563a; border-radius: 7px; padding: 9px 14px; font-weight: 600; }
 QPushButton:focus { border: 1px solid #ffb94f; }
 QToolTip { background: #2d3021; color: #fff4dc; border: 1px solid #64502d; padding: 6px; }
@@ -490,8 +429,81 @@ QTabWidget#reviewTabs::pane { border: 0; background: #242219; }
 QWidget#reviewPage { background: #242219; }
 QTableWidget#reviewTable::item { padding: 8px 12px; border-bottom: 1px solid #383c29; }
 QTableWidget#reviewTable QHeaderView::section { padding: 12px; }
-QSplitter::handle { background: #191710; width: 10px; }
 '''
+
+
+
+# 3.0: warm neutral surfaces, citrus actions, and clearer spacing.
+STYLE += """
+QWidget { color: #eeece2; font-family: 'Segoe UI'; font-size: 12px; }
+QMainWindow, QDialog { background: #181a16; }
+QFrame#sidebar { background: #11150f; border-right: 1px solid #30392a; }
+QFrame#card { background: #21251e; border: 1px solid #38422f; border-radius: 10px; }
+QLabel#heading { font-size: 26px; font-weight: 700; color: #fff0d5; }
+QLabel#logo { font-size: 19px; font-weight: 800; color: #ffc069; }
+QLabel#muted { color: #a6ad9b; font-size: 11px; }
+QLabel#sectionTitle { font-size: 14px; font-weight: 600; color: #eaeede; }
+QLabel#badge { background: #26311f; color: #c9dcb1; border: 1px solid #445337; border-radius: 8px; padding: 2px 10px; font-size: 11px; }
+QPushButton { background: #30382a; border: 1px solid #46513a; padding: 8px 11px; border-radius: 6px; }
+QPushButton:hover { background: #3a472f; border-color: #677851; }
+QPushButton:focus { border: 1px solid #d89b47; }
+QPushButton[primary='true'] { background: #f4a339; color: #241b0d; border: 1px solid #f4a339; }
+QPushButton[primary='true']:hover { background: #ffbc5c; }
+QPushButton:disabled { color: #777f6b; background: #242a20; border-color: #353e2d; }
+QComboBox, QLineEdit, QPlainTextEdit, QDoubleSpinBox, QSpinBox { background: #191f17; border: 1px solid #46513a; border-radius: 6px; padding: 7px; }
+QPlainTextEdit:focus, QLineEdit:focus { border-color: #be8e43; }
+QTableWidget { background: #20251d; alternate-background-color: #262d21; selection-background-color: #425432; selection-color: #fff6e4; outline: none; }
+QTableWidget#subtitleTable::item { padding: 8px; border-bottom: 1px solid #30392a; }
+QHeaderView::section { background: #303b27; color: #c5cfb6; padding: 8px; border: 0; }
+QTabBar#workspaceTabs::tab { background: #232a1f; color: #acb69e; border: 1px solid #35422c; padding: 10px 24px; margin-right: 6px; border-radius: 7px; }
+QTabBar#workspaceTabs::tab:selected { background: #3b492d; color: #ffbd60; border-color: #778651; }
+QTabBar::tab { padding: 9px 13px; background: #252e20; }
+QTabBar::tab:selected { background: #3d4c2f; color: #ffbd60; }
+QTabWidget#reviewTabs::pane { border: 0; background: #21251e; }
+QWidget#reviewPage { background: #21251e; }
+QSplitter::handle { background: #191710; width: 6px; height: 6px; }
+QMenu { background: #232a1e; border: 1px solid #546141; padding: 6px; }
+QMenu::item { padding: 9px 18px; }
+QMenu::item:selected { background: #455632; color: #fff4dd; }
+QMenu::item:disabled { color: #747b6a; }
+QMenu::separator { height: 1px; background: #3a4432; margin: 5px 8px; }
+QWidget#commandBar { background: #161b14; border-bottom: 1px solid #35402e; }
+QLabel#appName { color: #ffc069; font-weight: 700; font-size: 14px; }
+QMenuBar { background: transparent; border: 0; }
+QMenuBar::item { background: transparent; padding: 9px 10px; border-radius: 4px; }
+QMenuBar::item:selected { background: #303b27; color: #ffbd60; }
+QTabBar#workspaceTabs::tab { background: transparent; color: #aeb9a1; border: 0; border-bottom: 3px solid transparent; border-radius: 0; margin: 0 3px; padding: 13px 18px; }
+QTabBar#workspaceTabs::tab:selected { background: #252f20; color: #ffc069; border-bottom-color: #f4a339; }
+QTabBar#workspaceTabs::tab:hover { background: #2c3625; }
+QDockWidget { color: #c5cfb6; }
+QDockWidget::title { background: #232c1e; padding: 10px; }
+QLabel#paneTitle { color: #c5cfb6; font-weight: 600; }
+QWidget#queueRow { background: transparent; }
+QListWidget#videoQueueList::item { padding: 0; margin: 2px 0; border-radius: 6px; }
+QPushButton#queueRemove { background: transparent; border: 1px solid transparent; padding: 0; color: #a6ad9b; font-size: 17px; font-weight: 400; }
+QPushButton#queueRemove:hover, QPushButton#queueRemove:focus { background: #35402d; color: #ffc069; border-color: #586346; }
+"""
+
+class PaneHandle(QSplitterHandle):
+    """An unobtrusive shared edge, discovered through the resize cursor."""
+    def __init__(self, orientation, parent):
+        super().__init__(orientation, parent)
+        self.setCursor(Qt.CursorShape.SizeHorCursor if orientation == Qt.Orientation.Horizontal else Qt.CursorShape.SizeVerCursor)
+        self.setToolTip('Drag to resize panels')
+        self.setAccessibleName('Resize panels')
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), theme_color('background'))
+
+
+class PaneSplitter(QSplitter):
+    def __init__(self, orientation, parent=None):
+        super().__init__(orientation, parent)
+        self.setHandleWidth(6)
+
+    def createHandle(self):
+        return PaneHandle(self.orientation(), self)
 
 
 class OrangeMark(QWidget):
@@ -517,9 +529,13 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f'JuicyCensor · {VERSION}')
-        self.resize(1390, 920)
-        self.setMinimumSize(1360, 860)
+        self.resize(1500, 960)
+        self.setMinimumSize(1280, 720)
         self.setAcceptDrops(True)
+        self.appearance_path = ROOT / 'appearance.json'
+        self.appearance_document = load_preferences(self.appearance_path)
+        self.appearance_dialog = None
+        self.appearance_settings = apply_theme(QApplication.instance(), STYLE, self.appearance_document['settings'])
         self.config = json.loads((ROOT / 'config.json').read_text(encoding='utf-8'))
         self.devices, self.reviews, self.queue_paths = [], {}, []
         self.state, self.state_path = None, None
@@ -536,6 +552,7 @@ class MainWindow(QMainWindow):
         self.time_estimate = None
         self.cuda_available = False
         self.build_ui()
+        self.apply_appearance(self.appearance_settings)
         self.elapsed_timer = QTimer(self)
         self.elapsed_timer.timeout.connect(self.refresh_elapsed)
         self.elapsed_timer.start(1000)
@@ -552,65 +569,79 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         outer = QHBoxLayout(central)
         outer.setContentsMargins(0, 0, 0, 0)
-        side = QFrame()
-        side.setObjectName('sidebar')
-        side.setFixedWidth(258)
-        layout = QVBoxLayout(side)
-        layout.setContentsMargins(20, 26, 20, 22)
-        logo = QLabel('JUICYCENSOR')
-        logo.setObjectName('logo')
-        layout.addWidget(OrangeMark())
-        layout.addWidget(logo)
-        tag = QLabel(f'{VERSION}  /  LOCAL PROCESSING')
-        tag.setObjectName('muted')
-        tag.setStyleSheet('font-size: 10px; letter-spacing: 1px')
-        layout.addWidget(tag)
-        layout.addSpacing(30)
-        layout.addWidget(button('+  Add videos', self.add_dialog, True))
-        label = QLabel('YOUR QUEUE')
-        label.setObjectName('muted')
-        layout.addSpacing(14)
-        layout.addWidget(label)
+        # The queue is an optional dock, leaving the full editor width available.
+        self.queue_dock = QDockWidget('Video queue', self)
+        self.queue_dock.setObjectName('videoQueue')
+        self.queue_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.queue_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetClosable | QDockWidget.DockWidgetFeature.DockWidgetMovable)
+        queue_panel = QWidget()
+        queue_layout = QVBoxLayout(queue_panel)
+        queue_layout.setContentsMargins(10, 10, 10, 10)
+        queue_layout.addWidget(button('+ Add videos', self.add_dialog))
         self.queue = QListWidget()
+        self.queue.setObjectName('videoQueueList')
+        self.queue.setMinimumWidth(160)
         self.queue.currentRowChanged.connect(self.select_video)
-        layout.addWidget(self.queue, 1)
-        self.queue_btn = button('Analyze queue', self.analyze_queue)
-        layout.addWidget(self.queue_btn)
-        self.settings_btn = button('Settings', self.open_settings)
-        layout.addWidget(self.settings_btn)
-        runtime_button = button('Runtime setup', self.setup_runtime)
-        runtime_button.setToolTip('Install, repair, or switch between the CPU/AMD and NVIDIA processing environments')
-        layout.addWidget(runtime_button)
-        self.runtime_button = runtime_button
-        layout.addWidget(button('Open output folder', self.open_outputs))
-        outer.addWidget(side)
+        queue_layout.addWidget(self.queue)
+        self.queue_dock.setWidget(queue_panel)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.queue_dock)
+        self.queue_dock.hide()
         area = QVBoxLayout()
-        area.setContentsMargins(26, 24, 26, 20)
-        area.setSpacing(16)
+        area.setContentsMargins(14, 10, 14, 10)
+        area.setSpacing(8)
         outer.addLayout(area, 1)
-        header = QHBoxLayout()
-        heading = QVBoxLayout()
-        title = QLabel('Review the Juice')
-        title.setObjectName('heading')
-        heading.addWidget(title)
-        subtitle = QLabel('Detect. Review. Filter the Juice.')
-        subtitle.setObjectName('muted')
-        heading.addWidget(subtitle)
-        header.addLayout(heading, 1)
+
+        commands = QWidget()
+        commands.setObjectName('commandBar')
+        command_row = QHBoxLayout(commands)
+        command_row.setContentsMargins(14, 0, 14, 0)
+        command_row.setSpacing(10)
+        orange = QLabel()
+        orange.setPixmap(QIcon(str(ROOT/'assets/orange.ico')).pixmap(26, 26))
+        command_row.addWidget(orange)
+        brand = QLabel('JuicyCensor')
+        brand.setObjectName('appName')
+        brand.setToolTip(f'JuicyCensor {VERSION} · Local by default')
+        command_row.addWidget(brand)
+        self.command_menu = QMenuBar()
+        self.command_menu.setNativeMenuBar(False)
+        self.command_menu.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        command_row.addWidget(self.command_menu, 0, Qt.AlignmentFlag.AlignVCenter)
+        command_row.addStretch(1)
+        self.workspace_tabs = QTabBar()
+        self.workspace_tabs.setObjectName('workspaceTabs')
+        self.workspace_tabs.setExpanding(False)
+        self.workspace_tabs.setDrawBase(False)
+        self.workspace_tabs.addTab('Censor')
+        self.workspace_tabs.addTab('Subtitles && Translation')
+        self.workspace_tabs.setTabToolTip(0, 'Review and censor dialogue · Ctrl+1')
+        self.workspace_tabs.setTabToolTip(1, 'Create, edit, and translate subtitles · Ctrl+2')
+        command_row.addWidget(self.workspace_tabs)
+        command_row.addStretch(1)
         self.hardware = QLabel('Getting ready…')
         self.hardware.setObjectName('badge')
         self.hardware.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.hardware.setFixedHeight(34)
-        header.addWidget(self.hardware, 0, Qt.AlignmentFlag.AlignVCenter)
-        area.addLayout(header)
+        self.hardware.setFixedHeight(28)
+        self.hardware.setMinimumWidth(76)
+        self.hardware.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        command_row.addWidget(self.hardware, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.setMenuWidget(commands)
+
         filebar = QHBoxLayout()
-        self.filename = QLabel('Drop a video here to get started')
+        self.queue_toggle = button('Video queue', lambda: self.queue_dock.setVisible(not self.queue_dock.isVisible()))
+        self.queue_toggle.setCheckable(True)
+        self.queue_toggle.setToolTip('Show or hide the shared video queue · Ctrl+L')
+        self.queue_dock.visibilityChanged.connect(self.queue_toggle.setChecked)
+        filebar.addWidget(self.queue_toggle)
+        self.filename = QLabel('Open a video from File, or drop it here')
         self.filename.setObjectName('sectionTitle')
+        self.filename.setMinimumWidth(0)
+        self.filename.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         filebar.addWidget(self.filename, 1)
         self.analyze_btn = button('Analyze video', self.analyze_selected, True)
         filebar.addWidget(self.analyze_btn)
         area.addLayout(filebar)
-        split = QSplitter(Qt.Orientation.Horizontal)
+        split = PaneSplitter(Qt.Orientation.Horizontal)
         preview = QFrame()
         preview.setObjectName('card')
         preview_layout = QVBoxLayout(preview)
@@ -683,17 +714,7 @@ class MainWindow(QMainWindow):
         playback.addWidget(button('Preview region', self.preview_region))
         preview_layout.addLayout(playback)
         self.scissors = button('', self.begin_mark)
-        pix = QPixmap(24, 24)
-        pix.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pix)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor('#ffc563'), 2))
-        painter.drawEllipse(2, 3, 6, 6)
-        painter.drawEllipse(2, 15, 6, 6)
-        painter.drawLine(7, 8, 21, 19)
-        painter.drawLine(7, 16, 21, 5)
-        painter.end()
-        self.scissors.setIcon(QIcon(pix))
+        decorate(self.scissors, 'split')
         self.scissors.setToolTip('Start censor at current playback')
         self.scissors.setAccessibleName('Start censor at current playback')
         self.scissors.setFixedWidth(40)
@@ -713,14 +734,30 @@ class MainWindow(QMainWindow):
         preview_layout.addWidget(self.mark_panel)
         self.mark_panel.hide()
         self.timeline = Timeline()
+        self.timeline.region_selected.connect(self.table_select_timeline_region)
+        self.timeline.region_edited.connect(self.edit_timeline_region)
         self.timeline.seek.connect(lambda value: self.player.setPosition(round(value * 1000)))
         preview_layout.addWidget(self.timeline)
         zoom_row = QHBoxLayout()
+        self.waveform_popup = QMenu(self)
+        waveform_panel = QWidget(); waveform_form = QFormLayout(waveform_panel)
+        self.censor_wave_gain = QSlider(Qt.Orientation.Horizontal)
+        self.censor_wave_gain.setObjectName('waveformGain'); self.censor_wave_gain.setFixedHeight(24)
+        self.censor_wave_gain.setRange(50,400); self.censor_wave_gain.setValue(100); self.censor_wave_gain.setMinimumWidth(160)
+        self.censor_wave_gain.setToolTip('Waveform height only; audio volume stays unchanged')
+        self.censor_wave_gain.valueChanged.connect(self.timeline.set_gain)
+        waveform_form.addRow('Waveform height',self.censor_wave_gain)
+        waveform_action = QWidgetAction(self.waveform_popup); waveform_action.setDefaultWidget(waveform_panel); self.waveform_popup.addAction(waveform_action)
+        waveform_button = button('', lambda:self.waveform_popup.exec(waveform_button.mapToGlobal(waveform_button.rect().bottomLeft())))
+        waveform_button.setToolTip('Adjust waveform height to see quieter audio'); decorate(waveform_button,'wave'); waveform_button.setFixedWidth(38)
+        zoom_row.addWidget(waveform_button)
         self.zoom_out = button('', lambda: self.timeline.zoom_by(.5))
+        self.zoom_out.setProperty('zoomDirection',False)
         self.zoom_out.setIcon(self.zoom_icon(False))
         self.zoom_out.setToolTip('Zoom out of the timeline')
         self.zoom_out.setAccessibleName('Zoom out')
         self.zoom_in = button('', lambda: self.timeline.zoom_by(2))
+        self.zoom_in.setProperty('zoomDirection',True)
         self.zoom_in.setIcon(self.zoom_icon(True))
         self.zoom_in.setToolTip('Zoom in around the playback position for precise seeking')
         self.zoom_in.setAccessibleName('Zoom in')
@@ -765,16 +802,17 @@ class MainWindow(QMainWindow):
         self.table.itemSelectionChanged.connect(self.select_region)
         tabs = QTabWidget()
         tabs.setObjectName('reviewTabs')
+        self.censor_review_tabs = tabs
         regions = QWidget()
         regions.setObjectName('reviewPage')
         region_layout = QVBoxLayout(regions)
-        region_layout.setContentsMargins(10, 18, 10, 12)
+        region_layout.setContentsMargins(0, 14, 0, 0)
         region_layout.setSpacing(14)
         tabs.addTab(regions, 'Censor regions')
         transcript_page = QWidget()
         transcript_page.setObjectName('reviewPage')
         transcript_layout = QVBoxLayout(transcript_page)
-        transcript_layout.setContentsMargins(10, 18, 10, 12)
+        transcript_layout.setContentsMargins(0, 14, 0, 0)
         transcript_layout.setSpacing(14)
         self.transcript_search = QLineEdit()
         self.transcript_search.setPlaceholderText('Search the transcript…')
@@ -827,8 +865,19 @@ class MainWindow(QMainWindow):
         info.setWordWrap(True)
         region_layout.addWidget(info)
         split.addWidget(editor)
-        split.setSizes([580, 480])
-        area.addWidget(split, 1)
+        self.censor_split = split
+        split.setChildrenCollapsible(False)
+        split.setSizes([600, 600])
+        split.setStretchFactor(0, 1)
+        split.setStretchFactor(1, 1)
+        self.workspaces = QStackedWidget()
+        censor_page = QWidget()
+        censor_layout = QVBoxLayout(censor_page)
+        censor_layout.setContentsMargins(0, 0, 0, 0)
+        censor_layout.setSpacing(14)
+        censor_layout.addWidget(split, 1)
+        self.workspaces.addWidget(censor_page)
+        area.addWidget(self.workspaces, 1)
         footer = QHBoxLayout()
         footer.addWidget(QLabel('Censor style'))
         self.mode = CitrusComboBox()
@@ -850,8 +899,14 @@ class MainWindow(QMainWindow):
         footer.addWidget(self.open_result_btn)
         self.render_btn = button('Export censored video', self.render, True)
         footer.addWidget(self.render_btn)
-        area.addLayout(footer)
+        censor_layout.addLayout(footer)
+        from subtitle_ui import SubtitleWorkspace
+        self.subtitles = SubtitleWorkspace(self, ROOT, CitrusComboBox, TimestampEdit, Timeline, PaneSplitter)
+        self.subtitles.job_requested.connect(self.start_job)
+        self.workspaces.addWidget(self.subtitles)
+        self.workspace_tabs.currentChanged.connect(self.switch_workspace)
         statusbar = QHBoxLayout()
+        statusbar.setSpacing(16)
         self.status = QLabel('Ready. Add a video or drop files into the window.')
         self.status.setWordWrap(True)
         self.status.setObjectName('muted')
@@ -862,7 +917,7 @@ class MainWindow(QMainWindow):
         self.progress = QProgressBar()
         self.progress.setTextVisible(True)
         self.progress.setFormat("%p%")
-        self.progress.setFixedHeight(26)
+        self.progress.setFixedHeight(20)
         self.progress.setValue(0)
         area.addWidget(self.progress)
         self.elapsed_label = QLabel('')
@@ -872,11 +927,142 @@ class MainWindow(QMainWindow):
         self.remaining_label.setObjectName('remainingTime')
         self.remaining_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.remaining_label.setToolTip('Approximate time left for the current video. The first estimate uses video length and processing settings, then updates from live progress. Model downloads and slower batches can increase it.')
-        time_row = QHBoxLayout()
-        time_row.addWidget(self.elapsed_label)
-        time_row.addStretch()
-        time_row.addWidget(self.remaining_label)
-        area.addLayout(time_row)
+        statusbar.insertWidget(1, self.elapsed_label)
+        statusbar.insertWidget(2, self.remaining_label)
+        self.waveform = WaveformLoader(ROOT, self)
+        self.waveform.ready.connect(self.waveform_ready)
+        self.waveform.status.connect(self.waveform_status)
+        self.build_menus()
+        self.update_controls()
+
+    def build_menus(self):
+        self.menu_bindings = []
+        def add(menu, text, callback, shortcut=None):
+            item = menu.addAction(text)
+            item.triggered.connect(callback)
+            if shortcut:
+                item.setShortcut(QKeySequence(shortcut))
+            return item
+        def bind(menu, text, control, shortcut=None, subtitle_only=True, callback=None):
+            invoke = control.trigger if isinstance(control, QAction) else control.click
+            item = add(menu, text, callback or invoke, shortcut)
+            item.setToolTip(control.toolTip())
+            self.menu_bindings.append((item, control, subtitle_only))
+            return item
+        file_menu = self.command_menu.addMenu('&File')
+        self.open_video_action = add(file_menu, 'Open &video…', self.add_dialog, 'Ctrl+O')
+        bind(file_menu, 'Open &subtitles or project…', self.subtitles.import_button, 'Ctrl+Shift+O', False, self.open_subtitle_document)
+        bind(file_menu, '&Save subtitle project…', self.subtitles.save_button, 'Ctrl+S')
+        file_menu.addSeparator()
+        bind(file_menu, 'Export subtitles or video…', self.subtitles.export_button, 'Ctrl+E')
+        bind(file_menu, 'Export censored video…', self.render_btn, subtitle_only=False)
+        add(file_menu, 'Open output folder', self.open_outputs)
+        file_menu.addSeparator()
+        add(file_menu, 'E&xit', self.close, 'Ctrl+Q')
+        edit_menu = self.command_menu.addMenu('&Edit')
+        for text, control, shortcut in (
+            ('&Undo subtitle edit', self.subtitles.undo_button, 'Ctrl+Z'),
+            ('&Redo subtitle edit', self.subtitles.redo_button, 'Ctrl+Shift+Z'),
+            ('Add line at playhead', self.subtitles.add_button, None),
+            ('Split selected line', self.subtitles.split_button, None),
+            ('Merge selected lines', self.subtitles.merge_button, None),
+            ('Remove selected lines', self.subtitles.remove_button, None)):
+            bind(edit_menu, text, control, shortcut)
+        edit_menu.addSeparator()
+        bind(edit_menu, 'Scene notes…', self.subtitles.context_button)
+        self.queue_btn = add(edit_menu, 'Analyze video queue', self.analyze_queue)
+        view_menu = self.command_menu.addMenu('&View')
+        add(view_menu, 'Censor workspace', lambda: self.workspace_tabs.setCurrentIndex(0), 'Ctrl+1')
+        add(view_menu, 'Subtitles && Translation workspace', lambda: self.workspace_tabs.setCurrentIndex(1), 'Ctrl+2')
+        view_menu.addSeparator()
+        queue_action = self.queue_dock.toggleViewAction()
+        queue_action.setShortcut(QKeySequence('Ctrl+L'))
+        view_menu.addAction(queue_action)
+        add(view_menu, 'Reset panel layout', self.reset_panel_layout)
+        self.appearance_action = add(view_menu, 'Appearance…', self.open_appearance)
+        self.appearance_action.setToolTip('Customize colors, saturation, highlights, spacing, and saved palettes')
+        self.fullscreen_action = add(view_menu, 'Full screen', self.toggle_fullscreen, 'F11')
+        self.fullscreen_action.setCheckable(True)
+        exit_fullscreen = QAction(self)
+        exit_fullscreen.setShortcut(QKeySequence('Escape'))
+        exit_fullscreen.triggered.connect(lambda: self.toggle_fullscreen() if self.isFullScreen() else None)
+        self.addAction(exit_fullscreen)
+        settings_menu = self.command_menu.addMenu('&Settings')
+        self.settings_btn = add(settings_menu, 'Preferences…', self.open_settings, 'Ctrl+,')
+        self.runtime_button = add(settings_menu, 'Runtime setup…', self.setup_runtime)
+        self.runtime_button.setToolTip('Install, repair, or switch the CPU/AMD and NVIDIA environments')
+        help_menu = self.command_menu.addMenu('&Help')
+        add(help_menu, 'User guide', lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(ROOT/'README.md'))))
+        add(help_menu, 'About JuicyCensor', lambda: QMessageBox.about(self, 'About JuicyCensor', f'JuicyCensor {VERSION}\n\nFilter the Juice.\nCensor, subtitle, and translate with local processing.'))
+        for menu in (file_menu, edit_menu, view_menu, settings_menu):
+            menu.aboutToShow.connect(self.sync_menu_actions)
+
+    def sync_menu_actions(self):
+        subtitle_mode = self.workspaces.currentIndex() == 1
+        for item, control, subtitle_only in getattr(self, 'menu_bindings', []):
+            item.setEnabled(control.isEnabled() and (subtitle_mode or not subtitle_only))
+        if hasattr(self, 'fullscreen_action'):
+            self.fullscreen_action.setChecked(self.isFullScreen())
+            self.open_video_action.setEnabled(self.process is None)
+
+    def open_subtitle_document(self):
+        self.workspace_tabs.setCurrentIndex(1)
+        self.subtitles.open_document()
+
+    def open_appearance(self):
+        if self.appearance_dialog is not None:
+            self.appearance_dialog.show(); self.appearance_dialog.raise_(); self.appearance_dialog.activateWindow(); return
+        dialog = AppearanceDialog(self); self.appearance_dialog = dialog
+        dialog.finished.connect(lambda *_: setattr(self, 'appearance_dialog', None))
+        dialog.show()
+
+    def apply_appearance(self, settings):
+        self.appearance_settings = apply_theme(QApplication.instance(), STYLE, settings)
+        for control in self.findChildren(QPushButton):
+            name = control.property('themeIcon')
+            if name: control.setIcon(tool_icon(name, bool(control.property('themeIconPrimary'))))
+            standard = control.property('mediaIcon')
+            if standard is not None: control.setIcon(self.media_icon(QStyle.StandardPixmap(standard)))
+            zoom = control.property('zoomDirection')
+            if zoom is not None: control.setIcon(self.zoom_icon(zoom))
+        for label in self.findChildren(QLabel):
+            name = label.property('themeGlyph')
+            if name: label.setPixmap(tool_icon(name).pixmap(18,18))
+        self.sync_play_icon(); self.sync_volume_icon()
+        subtitles = self.subtitles
+        subtitles.play_button.setIcon(self.media_icon(QStyle.StandardPixmap.SP_MediaPause if subtitles.player.playbackState()==QMediaPlayer.PlaybackState.PlayingState else QStyle.StandardPixmap.SP_MediaPlay))
+        subtitles.table.verticalHeader().setDefaultSectionSize(42 if self.appearance_settings['density']=='compact' else 52)
+        for index,item in enumerate(subtitles.doc['cues']):
+            cell = subtitles.table.item(index,4)
+            if cell and item.get('suggestion'): cell.setForeground(theme_color('accent_text'))
+        self.timeline.update(); subtitles.timeline.update()
+        for handle in self.findChildren(PaneHandle): handle.update()
+        self.update()
+
+    def reset_panel_layout(self):
+        self.queue_dock.hide()
+        self.censor_split.setSizes([self.censor_split.width()//2]*2)
+        self.subtitles.reset_layout()
+
+    def toggle_fullscreen(self):
+        if self.isFullScreen():
+            self.showMaximized() if getattr(self, '_restore_maximized', False) else self.showNormal()
+        else:
+            self._restore_maximized = self.isMaximized()
+            self.showFullScreen()
+        self.sync_menu_actions()
+
+    def switch_workspace(self, index):
+        self.player.pause()
+        self.subtitles.player.pause()
+        self.subtitles.commit_edit()
+        if index == 0:
+            self.subtitles.deactivate_preview()
+        self.workspaces.setCurrentIndex(index)
+        if index == 1:
+            self.subtitles.activate_preview()
+        self.analyze_btn.setVisible(index == 0)
+        self.queue_btn.setVisible(index == 0)
         self.update_controls()
 
     def set_status(self, message):
@@ -895,7 +1081,7 @@ class MainWindow(QMainWindow):
         pix.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pix)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor('#ffc563'), 2))
+        painter.setPen(QPen(theme_color('accent_text'), 2))
         painter.drawEllipse(3, 3, 13, 13)
         painter.drawLine(15, 15, 21, 21)
         painter.drawLine(6, 9, 13, 9)
@@ -914,11 +1100,12 @@ class MainWindow(QMainWindow):
         pix = self.style().standardIcon(icon).pixmap(20, 20)
         painter = QPainter(pix)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-        painter.fillRect(pix.rect(), QColor('#ffc563'))
+        painter.fillRect(pix.rect(), theme_color('accent_text'))
         painter.end()
         return QIcon(pix)
     def icon_button(self, icon, tooltip, slot):
         control = button('', slot)
+        control.setProperty('mediaIcon',icon.value)
         control.setIcon(self.media_icon(icon))
         control.setFixedWidth(40)
         control.setToolTip(tooltip)
@@ -1081,7 +1268,7 @@ class MainWindow(QMainWindow):
             remaining = max(5, int((remaining + 4.999) // 5) * 5)
             self.remaining_label.setText(f'About {format_duration(remaining)} remaining')
         else:
-            self.remaining_label.setText('Reading video length…' if self.job.get('action') in ('analyze', 'render', 'preview') else 'Estimating download time…')
+            self.remaining_label.setText('Reading video length…' if self.job.get('action') in ('analyze', 'render', 'preview') else 'Preparing estimate…' if self.job.get('action','').startswith('subtitle_') else 'Estimating download time…')
 
     def selected_path(self):
         row = self.queue.currentRow()
@@ -1095,11 +1282,16 @@ class MainWindow(QMainWindow):
         self.queue.setEnabled(not busy)
         self.render_btn.setEnabled(not busy and bool(self.state and self.state['events']))
         self.table.setEnabled(not busy)
+        self.timeline.editable = not busy
+        if busy: self.timeline.drag = None
         self.mode.setEnabled(not busy)
         self.censored_preview.setEnabled(not busy and bool(self.state and self.state['events']))
         self.cancel_btn.setEnabled(busy)
+        self.cancel_btn.setVisible(busy)
+        self.subtitles.set_busy(busy)
         self.scissors.setEnabled(not busy and self.state is not None and self.mark_start is None)
         self.mark_panel.setEnabled(not busy)
+        self.sync_menu_actions()
     def add_dialog(self):
         paths, _ = QFileDialog.getOpenFileNames(self, 'Choose videos', '', 'Videos (*.mp4 *.mkv *.mov *.avi *.webm *.m4v)')
         self.add_paths(paths)
@@ -1108,17 +1300,84 @@ class MainWindow(QMainWindow):
             path = Path(name).resolve()
             if path.is_file() and path.suffix.lower() in EXTENSIONS and str(path) not in self.queue_paths:
                 self.queue_paths.append(str(path))
-                self.queue.addItem(path.name)
-                self.queue.item(self.queue.count() - 1).setToolTip(str(path))
+                item = QListWidgetItem(self.queue)
+                item.setData(Qt.ItemDataRole.AccessibleTextRole, path.name)
+                item.setToolTip(str(path)); item.setSizeHint(QSize(0,44))
+                row = QWidget(); row.setObjectName('queueRow')
+                row_layout = QHBoxLayout(row); row_layout.setContentsMargins(8,4,4,4); row_layout.setSpacing(6)
+                name_label = QLabel(path.name)
+                name_label.setMinimumWidth(0); name_label.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Preferred)
+                name_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+                row_layout.addWidget(name_label,1)
+                remove = button('', lambda checked=False, video=str(path): self.remove_queued_video(video))
+                remove.setObjectName('queueRemove'); remove.setFixedSize(24,24)
+                remove.setProperty('mediaIcon',QStyle.StandardPixmap.SP_TitleBarCloseButton.value); remove.setIcon(self.media_icon(QStyle.StandardPixmap.SP_TitleBarCloseButton)); remove.setIconSize(QSize(12,12))
+                remove.setToolTip('Remove from queue'); remove.setAccessibleName('Remove '+path.name+' from queue')
+                row_layout.addWidget(remove)
+                self.queue.setItemWidget(item,row)
         if self.queue.currentRow() < 0 and self.queue.count():
             self.queue.setCurrentRow(0)
+        self.queue_toggle.setText(f'Video queue ({len(self.queue_paths)})')
         self.update_controls()
+
+    def remove_queued_video(self, path):
+        if self.process or path not in self.queue_paths:
+            return
+        selected = self.selected_path()
+        if selected == path and not self.subtitles.commit_edit():
+            self.set_status('Correct the subtitle timing before removing this video so your edits can be saved.')
+            return
+        if selected == path:
+            self.subtitles.autosave()
+        row = self.queue_paths.index(path)
+        self.queue.blockSignals(True)
+        item = self.queue.item(row)
+        widget = self.queue.itemWidget(item)
+        self.queue.removeItemWidget(item)
+        if widget:
+            widget.deleteLater()
+        self.queue.takeItem(row)
+        self.queue_paths.pop(row)
+        self.pending = [video for video in self.pending if video != path]
+        next_row = self.queue_paths.index(selected) if selected in self.queue_paths else min(row,len(self.queue_paths)-1)
+        self.queue.setCurrentRow(next_row)
+        self.queue.blockSignals(False)
+        if selected == path:
+            if next_row >= 0:
+                self.select_video(next_row)
+            else:
+                self.clear_current_video()
+        self.queue_toggle.setText(f'Video queue ({len(self.queue_paths)})')
+        self.set_status(f'Removed {Path(path).name} from the queue.')
+        self.update_controls()
+
+    def clear_current_video(self):
+        self.waveform.cancel()
+        self.timeline.peaks = []; self.timeline.waveform_message = ""
+        self.invalidate_preview(switch=False)
+        self.player.stop(); self.player.setSource(QUrl())
+        self.preview_end = None
+        self.state = self.state_path = None
+        self.cancel_mark()
+        self.start.setValue(0); self.end.setValue(0)
+        self.duration_changed(0); self.timeline.position = 0
+        self.filename.setText('Open a video from File, or drop it here'); self.filename.setToolTip('')
+        self.subtitles.clear_video()
+        self.refresh_regions()
+
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
     def dropEvent(self, event):
         self.add_paths([url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()])
     def select_video(self, row):
+        if not self.subtitles.commit_edit():
+            self.queue.blockSignals(True)
+            if self.subtitles.video_path in self.queue_paths:
+                self.queue.setCurrentRow(self.queue_paths.index(self.subtitles.video_path))
+            self.queue.blockSignals(False)
+            self.set_status('Correct the subtitle timing before switching videos.')
+            return
         self.invalidate_preview(switch=False)
         self.cancel_mark()
         path = self.selected_path()
@@ -1128,9 +1387,34 @@ class MainWindow(QMainWindow):
         self.player.stop()
         self.player.setSource(QUrl.fromLocalFile(path))
         self.filename.setText(Path(path).name)
+        self.filename.setToolTip(path)
+        self.subtitles.load_video(path)
+        for timeline in (self.timeline, self.subtitles.timeline):
+            timeline.peaks = []; timeline.drag = None; timeline.selected_index = -1; timeline.position = 0
+        self.waveform.load(path)
         self.state, self.state_path = self.reviews.get(path, (None, None))
         self.refresh_regions()
         self.update_controls()
+    def waveform_ready(self, path, data):
+        if path != self.selected_path(): return
+        for timeline in (self.timeline, self.subtitles.timeline): timeline.set_waveform(data)
+
+    def waveform_status(self, path, message):
+        if path != self.selected_path(): return
+        for timeline in (self.timeline, self.subtitles.timeline):
+            timeline.waveform_message = message; timeline.update()
+
+    def table_select_timeline_region(self, index):
+        if not self.process and self.state and 0 <= index < len(self.state['events']):
+            self.player.pause(); self.table.selectRow(index)
+
+    def edit_timeline_region(self, index, start, end):
+        if self.process or not self.state or not 0 <= index < len(self.state['events']): return
+        if not 0 <= start < end <= self.state['duration']: return
+        self.state['events'][index].update(start=start, end=end)
+        self.save_review(); self.table.selectRow(index)
+        self.start.setValue(start); self.end.setValue(end)
+
     def refresh_regions(self):
         events = self.state['events'] if self.state else []
         self.table.setRowCount(len(events))
@@ -1140,9 +1424,12 @@ class MainWindow(QMainWindow):
         self.region_count.setText(f"{len(events)} censor {'region' if len(events) == 1 else 'regions'}" if self.state else 'Censor regions')
         self.refresh_transcript()
         self.timeline.events = events
+        self.timeline.selected_index = self.table.currentRow()
         self.timeline.update()
     def select_region(self):
         row = self.table.currentRow()
+        self.timeline.selected_index = row
+        self.timeline.update()
         if self.state and 0 <= row < len(self.state['events']):
             item = self.state['events'][row]
             self.start.setValue(item['start'])
@@ -1209,7 +1496,7 @@ class MainWindow(QMainWindow):
         timeline = self.timeline
         self.zoom_label.setText(f'{timeline.zoom:g}×')
         self.zoom_out.setEnabled(timeline.zoom > 1)
-        self.zoom_in.setEnabled(timeline.duration > 0 and timeline.zoom < max(1, timeline.duration))
+        self.zoom_in.setEnabled(timeline.duration > 0 and timeline.zoom < max(1, timeline.duration*2))
         self.timeline_pan.setEnabled(timeline.zoom > 1)
         self.timeline_pan.blockSignals(True)
         extent = timeline.duration - timeline.span
@@ -1258,6 +1545,8 @@ class MainWindow(QMainWindow):
     def start_job(self, job):
         if self.process:
             return
+        if job['action'] == 'subtitle_export':
+            job['partial_token'] = uuid4().hex
         local_path = ROOT / 'runtime.local.json'
         local = json.loads(local_path.read_text(encoding='utf-8')) if local_path.exists() else {}
         python = Path(local.get('python', str(ROOT / 'venv' / 'Scripts' / 'python.exe')))
@@ -1276,6 +1565,8 @@ class MainWindow(QMainWindow):
         environment = os.environ.copy()
         environment['PYTHONIOENCODING'] = 'utf-8'
         environment['PYTHONDONTWRITEBYTECODE'] = '1'
+        if job['action'] == 'subtitle_smart' and job.get('settings', {}).get('provider') == 'online':
+            environment['JUICY_TRANSLATION_KEY'] = self.subtitles.api_key
         for key in ('PYTHONHOME', 'PYTHONPATH', 'TCL_LIBRARY', 'TK_LIBRARY', '_MEIPASS2'):
             environment.pop(key, None)
         process = ProcessingThread([str(python), '-B', '-u', str(ROOT / 'worker.py'), str(path)], environment, self)
@@ -1286,11 +1577,12 @@ class MainWindow(QMainWindow):
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.job_started = time.monotonic()
-        duration = job.get('state', {}).get('duration', self.player.duration() / 1000)
+        duration = job.get('state', {}).get('duration', (self.subtitles.player.duration() if job['action'].startswith('subtitle_') else self.player.duration()) / 1000)
         self.set_time_estimate(duration)
+        self.subtitles.player.pause()
         self.refresh_elapsed()
         self.progress.setFormat("%p% · estimated" if job["action"] == "analyze" else "%p%")
-        self.hardware.setText({"probe": "Getting ready…", "analyze": "Analyzing", "render": "Exporting", "preview": "Preparing preview", "download": "Downloading"}[job["action"]])
+        self.hardware.setText({"probe": "Getting ready…", "analyze": "Analyzing", "render": "Exporting", "preview": "Preparing preview", "download": "Downloading", "subtitle_transcribe": "Transcribing", "subtitle_translate": "Translating", "subtitle_smart": "Refining", "subtitle_waveform": "Reading audio", "subtitle_export": "Exporting"}[job["action"]])
         self.set_status('Checking graphics…' if job['action'] == 'probe' else 'Starting…')
         self.update_controls()
         process.start()
@@ -1311,7 +1603,11 @@ class MainWindow(QMainWindow):
                     self.worker_error = f'Unexpected processing response: {exc}'
     def message(self, data):
         kind = data['type']
-        if kind == 'stage':
+        if kind.startswith('subtitle_'):
+            if not self.cancelled:
+                self.subtitles.receive(data)
+                self.received_result = True
+        elif kind == 'stage':
             self.set_status(data['message'])
             if 'percent' in data:
                 self.progress.setValue(max(self.progress.value(), min(99, int(data['percent']))))
@@ -1366,6 +1662,13 @@ class MainWindow(QMainWindow):
         self.process.deleteLater()
         self.process = None
         self.job_path.unlink(missing_ok=True)
+        if self.job.get('action') == 'subtitle_export' and re.fullmatch(r'[0-9a-f]{32}', self.job.get('partial_token', '')):
+            target = Path(self.job['output']).resolve()
+            partial = target.with_name(target.stem + '.' + self.job['partial_token'] + '.partial' + target.suffix)
+            try:
+                partial.unlink(missing_ok=True)
+            except OSError:
+                pass
         if self.job.get('action') == 'preview' and self.job.get('preview_id'):
             partial = ROOT / 'cache' / 'previews' / (self.job['preview_id'] + '.partial.mkv')
             try:
@@ -1396,6 +1699,10 @@ class MainWindow(QMainWindow):
             self.pending.clear()
             self.process.kill()  # Worker Job Object terminates its subprocesses too.
     def closeEvent(self, event):
+        if not self.subtitles.commit_edit():
+            self.set_status('Correct the subtitle timing before closing so your edits can be saved.')
+            event.ignore()
+            return
         if self.process:
             answer = QMessageBox.question(self, 'Processing is running', 'Cancel processing and close JuicyCensor?')
             if answer != QMessageBox.StandardButton.Yes:
@@ -1403,7 +1710,15 @@ class MainWindow(QMainWindow):
                 return
             self.cancel()
             self.process.waitForFinished(5000)
+        if self.appearance_dialog is not None: self.appearance_dialog.reject()
+        self.waveform.close()
+        self.subtitles.commit_edit()
+        self.subtitles.autosave()
+        self.subtitles.deactivate_preview()
+        self.subtitles.player.setVideoOutput(None)
         self.player.stop()
+        self.player.setSource(QUrl())
+        self.player.setVideoOutput(None)
         event.accept()
 
 
@@ -1429,7 +1744,7 @@ def main():
     app.setWindowIcon(QIcon(str(ROOT / 'assets' / 'orange.ico')))
     if sys.platform == 'win32':
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('JuicyCensor.Desktop.2')
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('JuicyCensor.Desktop.3')
     app.setStyle('Fusion')
     app.setStyleSheet(STYLE)
     from bootstrap import ready

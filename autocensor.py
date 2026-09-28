@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JuicyCensor v2.1.0
+JuicyCensor 3.0 development
 
 Uses cached WhisperX forced-alignment when available, then creates a new
 censored MP4. The original video is never modified.
@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import traceback
+import unicodedata
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -94,8 +95,8 @@ def safe_stem(path: Path) -> str:
 
 
 def normalize_token(text: str) -> str:
-    text = text.lower().replace("’", "'")
-    return re.sub(r"[^a-z0-9']+", "", text)
+    text = unicodedata.normalize('NFKC', text).casefold().replace("’", "'")
+    return ''.join(c for c in text if unicodedata.category(c)[0] in 'LNM' or c == "'")
 
 
 def read_entries(path: Path) -> list[str]:
@@ -208,6 +209,27 @@ def find_events(
                     "phrase", phrase
                 ))
 
+    # CJK/Thai alignment can split a written word into individual characters.
+    # Map compact text back to actual aligned spans; do not fabricate character times.
+    stream, owners = '', []
+    for index, word in enumerate(words):
+        if index and word.start - words[index - 1].end > 1.0:
+            stream += '\0'
+            owners.append(None)
+        stream += word.normalized
+        owners.extend([index] * len(word.normalized))
+    for entry in dict.fromkeys(banned_words + banned_phrases):
+        value = normalize_token(entry)
+        if not value or not re.search(r'[\u0e00-\u0e7f\u3040-\u30ff\u3400-\u9fff]', value):
+            continue
+        offset = 0
+        while (offset := stream.find(value, offset)) >= 0:
+            first, last = owners[offset], owners[offset + len(value) - 1]
+            start = max(0., words[first].start - pre)
+            end = words[last].end + post
+            if not any(abs(e.start-start) < .001 and abs(e.end-end) < .001 and e.source == entry for e in events):
+                events.append(Event(start, end, ''.join(w.text for w in words[first:last+1]), 'phrase', entry))
+            offset += len(value)
     return merge_events(events, float(config.get("merge_gap", 0.10)))
 
 
@@ -547,7 +569,7 @@ def write_report(path: Path, video: Path, events: list[Event], cache_file: Path)
             counts[source] += 1
 
     lines = [
-        "JuicyCensor v2.1.0 report",
+        "JuicyCensor 3.0 development report",
         f"Video: {video}",
         f"Alignment cache: {cache_file}",
         f"Events: {len(events)}",

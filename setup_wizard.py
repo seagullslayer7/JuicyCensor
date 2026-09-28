@@ -40,7 +40,7 @@ class SetupWizard(QDialog):
         self.profile.addItem('NVIDIA CUDA · accelerated speech analysis', 'cuda')
         self.profile.setToolTip('Both profiles support hardware video export. CUDA adds NVIDIA-accelerated speech analysis.')
         layout.addWidget(self.profile)
-        self.models = QCheckBox('Download starter English models now (recommended)')
+        self.models = QCheckBox('Download starter multilingual models now (recommended)')
         self.models.setChecked(True)
         layout.addWidget(self.models)
         self.log = QPlainTextEdit()

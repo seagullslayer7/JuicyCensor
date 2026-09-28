@@ -12,7 +12,7 @@ import threading
 import urllib.request
 import zipfile
 
-# Runtime compatibility version; unchanged for the 2.0.3 setup recovery.
+# Runtime compatibility version, independent of the app release. Existing 2.x ML environments remain compatible.
 VERSION = '2.0.0'
 
 
@@ -106,7 +106,7 @@ class Installer:
             partial.replace(archive)
         if not valid():
             raise RuntimeError('Download checksum mismatch: ' + name)
-        self.progress('Verified ' + name + '; extractingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦')
+        self.progress('Verified ' + name + '; extracting…')
         with zipfile.ZipFile(archive) as bundle:
             for item in bundle.infolist():
                 self.check_cancel()
@@ -183,7 +183,7 @@ class Installer:
         from install_runtime import VULKAN_URL, VULKAN_SHA, FFMPEG_URL, FFMPEG_SHA
         self.archive(FFMPEG_URL, FFMPEG_SHA, 'ffmpeg-shared.zip', root / 'tools/ffmpeg-shared', True)
         self.archive(VULKAN_URL, VULKAN_SHA, 'whisper-vulkan.zip', root / 'tools/whisper-vulkan')
-        self.progress('Checking the new processing environmentÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦')
+        self.progress('Checking the new processing environment…')
         self.command([python, '-B', root / 'setup_verify.py', *(['--models'] if models else [])])
         self.check_cancel()
         temporary = marker.with_suffix('.tmp')

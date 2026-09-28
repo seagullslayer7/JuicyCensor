@@ -16,12 +16,12 @@ print(f'Python {sys.version.split()[0]}; torch {torch.__version__}; CUDA availab
 print('Vulkan devices: ' + str(vulkan_devices()), flush=True)
 if '--models' in sys.argv:
     import nltk
-    from model_download import download_model
-    print('Downloading starter English models and word alignment data…', flush=True)
-    download_model('base.en', root)
+    from model_download import download_model, load_alignment_model
+    print('Downloading starter multilingual models and word alignment data…', flush=True)
+    download_model('base', root)
     nltk.download('punkt_tab', download_dir=str(root / 'cache/nltk'), raise_on_error=True)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = whisperx.load_model('base.en', device, compute_type='float16' if device == 'cuda' else 'int8', language='en')
+    model = whisperx.load_model('base', device, compute_type='float16' if device == 'cuda' else 'int8', language='en')
     del model
-    whisperx.load_align_model(language_code='en', device='cpu')
+    load_alignment_model(language_code='en', device='cpu')
 print('Processing environment verified.', flush=True)

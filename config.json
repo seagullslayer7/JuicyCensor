@@ -1,6 +1,6 @@
 {
-  "model": "base.en",
-  "language": "en",
+  "model": "base",
+  "language": "auto",
   "device": "auto",
   "compute_type": "float16",
   "batch_size": 8,
@@ -16,8 +16,11 @@
   "merge_gap": 0.1,
   "backend": "auto",
   "vulkan_device": "auto",
-  "vulkan_model": "base.en",
+  "vulkan_model": "base",
   "export_path": "",
   "export_quality": "original",
-  "export_audio_bitrate": "original"
+  "export_audio_bitrate": "original",
+  "subtitle_model": "large-v3",
+  "subtitle_vulkan_model": "large-v3",
+  "subtitle_quiet": false
 }

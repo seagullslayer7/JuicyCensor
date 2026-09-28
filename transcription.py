@@ -10,8 +10,16 @@ from pathlib import Path
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parent
-CLI = ROOT / 'tools' / 'whisper-vulkan' / 'Release' / 'whisper-cli.exe'
+LOCAL = json.loads((ROOT / 'runtime.local.json').read_text(encoding='utf-8')) if (ROOT / 'runtime.local.json').exists() else {}
+CLI = Path(LOCAL.get('whisper_cli', str(ROOT / 'tools' / 'whisper-vulkan' / 'Release' / 'whisper-cli.exe')))
+MODEL_DIR = Path(LOCAL.get('models_dir', str(ROOT / 'models')))
+from languages import MODELS, validate_language_model
 CREATE_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+
+
+def ggml_model_path(name):
+    local = ROOT / 'models' / f'ggml-{name}.bin'
+    return local if local.is_file() else MODEL_DIR / f'ggml-{name}.bin'
 
 
 def vulkan_devices(cli: Path = CLI) -> list[dict]:
@@ -72,12 +80,12 @@ def parse_cpp_result(document: dict) -> dict:
 def cache_signature(audio: Path, config: dict, backend: str) -> str:
     stat = audio.stat()
     model = config.get('vulkan_model', 'base.en') if backend == 'vulkan' else config.get('model', 'large-v3')
-    details = {'schema': 2, 'audio': [str(audio.resolve()), stat.st_size, stat.st_mtime_ns],
+    details = {'schema': 3, 'audio': [str(audio.resolve()), stat.st_size, stat.st_mtime_ns],
                'backend': backend, 'model': model, 'language': config.get('language', 'en'),
                'alignment': 'cpu' if backend == 'vulkan' else backend,
                'compute_type': config.get('compute_type', 'float16')}
     if backend == 'vulkan':
-        path = ROOT / 'models' / f'ggml-{model}.bin'
+        path = ggml_model_path(model)
         if path.exists():
             details['model_file'] = [path.stat().st_size, path.stat().st_mtime_ns]
     return hashlib.sha256(json.dumps(details, sort_keys=True).encode()).hexdigest()
@@ -99,15 +107,16 @@ def transcribe_and_align(audio_path: Path, config: dict, cache_path: Path, progr
         if cached.get('_cache_signature') == signature:
             print('Using matching word-alignment cache.', flush=True)
             return cached
-    language = config.get('language') or 'en'
+    language = config.get('language') or 'auto'
+    validate_language_model(language, config.get('vulkan_model' if backend == 'vulkan' else 'model', 'base'))
     audio = whisperx.load_audio(str(audio_path))
     duration = len(audio) / 16000
     if backend == 'vulkan':
         device = select_device(config.get('vulkan_device', 'auto'), devices)
         model_name = config.get('vulkan_model', 'base.en')
-        if model_name not in ('base.en', 'small.en', 'medium.en', 'large-v3'):
-            raise ValueError('Unsupported Vulkan model. Choose base.en, small.en, medium.en, or large-v3.')
-        model_path = ROOT / 'models' / f'ggml-{model_name}.bin'
+        if model_name not in MODELS:
+            raise ValueError('Choose a supported Vulkan model in Settings.')
+        model_path = ggml_model_path(model_name)
         if not model_path.is_file():
             raise FileNotFoundError(f'Download the {model_name} Vulkan model in Settings first.')
         if model_name.endswith('.en') and language not in ('en', 'auto'):
@@ -167,7 +176,8 @@ def transcribe_and_align(audio_path: Path, config: dict, cache_path: Path, progr
         raise RuntimeError('The transcription backend did not identify a language.')
     if result['segments']:
         print(f'Aligning words on {alignment_device} ({detected}).', flush=True)
-        align_model, metadata = whisperx.load_align_model(language_code=detected, device=alignment_device)
+        from model_download import load_alignment_model
+        align_model, metadata = load_alignment_model(language_code=detected, device=alignment_device)
         try:
             report('align', 0, 'Aligning words')
             aligned = whisperx.align(result['segments'], align_model, metadata, audio,

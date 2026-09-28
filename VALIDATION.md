@@ -1,84 +1,78 @@
-# JuicyCensor 2.1.0 validation
+# JuicyCensor 3.0.0 validation
 
-- All 27 backend, cache, setup, review and time-estimate tests passed. New FFmpeg integration checks
-  verify mute, continuous beep, pulse beep and custom beep audio, unchanged copied
-  video streams, preview cache reuse/invalidation, invalid bounds and cleanup.
-- Confirmed live transcription and alignment callbacks with real CPU and Vulkan
-  analysis of the JFK sample, using existing offline models. First-run estimates,
-  stage transitions, slower batches and out-of-order updates are covered by tests.
-- Older review migration preserves edited regions while adding aligned transcript words.
-- Qt integration checks cover transcript search/seek, original/censored source switching,
-  cached switching, playhead and speed preservation, timing-edit invalidation and ETA.
-- Preview and export use the same audio filter builders. Preview requires preparation
-  and disk space for a cached video copy; it is not live audio filtering while editing.
-- Estimates are approximate and available on the first run. Initial estimates use
-  video length and processing settings; live stage progress refines the remaining time.
+Release checks on Windows x64, September 27, 2026.
 
-# JuicyCensor 2.0.3 validation
+## Processing and media
 
-- AMD Radeon RX 9060 XT Vulkan support is confirmed by a user on a separate PC.
-  This is community verification, distinct from the local automated tests below.
+- All **48 automated tests** pass: backend selection, parsing, cache reuse and
+  invalidation, Windows model-download privileges, setup recovery, audio censoring,
+  review migration, progress estimates, subtitle formats/timing/history, Unicode
+  matching, and translation response validation.
+- Alignment-download regression tests cover reuse without networking, a truncated
+  cached checkpoint, interrupted range retries, ignored ranges, failed integrity
+  checks, and cleanup that preserves existing files when a retry fails.
+- Live subtitle transcription passes on **CPU, NVIDIA CUDA, and Vulkan** using the
+  public JFK speech sample. Local Whisper audio-to-English translation returns a
+  reviewable suggestion. These checks use existing local models.
+- Real MP4 subtitle burn-in and MKV subtitle-track exports pass FFprobe checks.
+  Copied audio matches the input stream; copied MKV video also matches the input.
+- Local/online text-model request formatting, context batches, endpoint boundaries,
+  key handling, and malformed responses are covered by mocked protocol tests.
+  No claim of translation quality from a particular text-model service is made.
 
-- All 17 backend/cache/setup tests passed, including successful recovery, a missing or
-  invalid interpreter, unrelated errors, successful normal installs, and cancellation.
-- A real child process emitted the reported uv error and exited unsuccessfully. Setup
-  captured that output, verified Python 3.12.14 directly, and created a working venv.
-- The original installer's Windows error 448 was simulated; it has not been reproduced
-  under the affected PC's exact security context. No Windows security settings were changed.
+## Interface and editing
 
-# JuicyCensor 2.0.2 validation
+- Native Qt checks cover bilingual editing, search, suggestion acceptance/dismissal,
+  autosave, Undo/Redo, workspace switching, exports, and clean shutdown.
+- Layout checks cover 1280×720 through 2560×1440, balanced video/transcript panes,
+  edge resizing, queue visibility/removal, menu routing, shortcuts, and full-screen
+  transitions that restore the previous window state.
+- Waveform checks cover automatic decoding, 10 ms peak bins, quiet peaks, cache
+  reuse, stale-result cancellation, videos without audio, cue moving/edge trimming,
+  chronological reordering, bounds, Escape cancellation, busy-state guards,
+  Undo/Redo, autosave, and saved censor-region timing changes.
+- Appearance checks cover four palettes, two spacing choices, minimum and large
+  windows, text contrast, saturation, invalid preference recovery, live preview,
+  nested color-picker cancellation, pending-change cancellation, custom preset
+  saving/reopening, and reset. Subtitle styling remains unchanged by app themes.
+- Screenshots in the README use a generated demonstration clip and illustrative
+  subtitles. No personal media or transcripts are included.
 
-- Regression tests exercise the pinned Hugging Face Hub implementation with symlink
-  creation denied: existing blobs copy correctly and new downloads move into snapshots.
-- Repeated cache configuration is safe and missing files still report errors.
-- Downloaded the real large-v3 config with symbolic links denied, reused it offline,
-  and retried the failed file in an existing cache successfully.
-- All 11 backend/cache tests passed, along with UI version and runtime-reuse checks.
+## Packaging and setup
 
-# JuicyCensor 2.0.1 validation
+- The frozen executable, installer, manifest, and documentation identify **3.0.0**.
+  The executable's Windows file/product version metadata also identifies 3.0.0.
+- The frozen first-run setup dialog opens. A fresh private **CPU runtime** installs
+  from the frozen executable on the release machine, and startup/device discovery
+  succeeds with that new runtime. No system Python or CUDA Toolkit is needed.
+- Starter multilingual speech models download and load in that fresh environment.
+  A real alignment download that ended early was recovered with the range downloader;
+  the repaired checkpoint loads successfully. Complete cached copies are reused.
+- Installer extraction and an actual **2.1.0 → 3.0.0** installer upgrade are checked
+  in isolated folders. Custom configuration, word lists, appearance preferences,
+  project/cache data, and runtime/model files are preserved while application files
+  and the executable are replaced.
+- Installer and portable/source archives are checked against the release source;
+  ZIP integrity and SHA-256 checksums are verified before publishing. Uploaded
+  GitHub asset digests must match the local release downloads.
+- Private overrides, environments, models, caches, API keys, personal media, and
+  development reports are excluded by the release builder's explicit allowlist.
 
-Validated locally on Windows on 2026-09-20.
+## Scope and limitations
 
-- Verified that the sidebar badge and setup window title display 2.0.1.
-- Checked centered Start/End controls, timestamp parsing, and increment buttons.
-- Verified the new subtitle and visually inspected the app screenshot and README banner.
-- Confirmed the existing 2.0.0 processing runtime remains ready without reinstalling.
-- Reviewed the shipped profanity lists and parsed the Python source for syntax errors.
+This is testing on the release machine, not certification of every Windows PC or
+driver. A separate physical clean PC, Intel hardware encoding, HDR conversion,
+long-video performance, and comprehensive accessibility have not been tested for
+3.0.0. Radeon RX 9060 XT Vulkan support was confirmed by a user on another PC during
+the 2.x releases; this is separate from the local 3.0.0 checks.
 
-The processing pipeline and dependency versions are unchanged. Earlier backend and
-installer validation is recorded below; it is not a new full-system test of this patch.
+Installer tests use its documented extraction mode, which suppresses registry and
+shortcut changes. They do not verify normal uninstall registration. Existing 2.x
+runtime/download fixes remain covered by regression tests; the original affected
+PC's installer security context has not been reproduced exactly.
 
-# JuicyCensor 2.0.0 validation
-
-Validated locally on Windows on 2026-09-19.
-
-- Created a new private Python 3.12.14 environment, independent of JuicyCensor 1.0.
-- Installed the hash-locked CPU profile and then the CUDA 12.8 profile. Both passed
-  imports, FFmpeg execution and device discovery. No system Python/toolkit setup required.
-- Downloaded and loaded starter English speech models and forced alignment data.
-- CPU, AMD integrated Vulkan and NVIDIA RTX 5060 Ti CUDA transcription/word alignment
-  each produced 22 words and two expected matches on the public 11-second JFK sample.
-- Worker analysis, eight backend unit tests and a real censored sample export passed.
-- PySide6 6.11.2 interface checks passed timestamp editing, volume/mute, speed controls,
-  adjustable skips, scissors selection/cancel, zoom/pan and export.
-- The frozen 2.0.0 executable passed runtime discovery; the first-run setup dialog loaded.
-- Built the Windows installer and portable/source ZIPs. Installer extraction mode,
-  first-run setup UI, ZIP integrity and release-file checksums passed. The standard
-  uninstall registry entry could not be exercised inside the restricted build session.
-- Export feature checks covered original stream copy, resolution/frame-rate changes,
-  NVIDIA H.264/HEVC/AV1, AMD H.264/HEVC, CPU H.264/HEVC, and MKV/Opus output to a chosen
-  folder with filenames without spaces. Explicit unsupported encoders fail visibly.
-- Audio Original targets the reported source bitrate; the 192 kbps fallback and preset
-  transitions were tested. It does not promise lossless processed audio.
-
-This is not a certification of every PC or video format. Intel hardware encoding
-and a separate physical clean PC have not been tested by the maintainer. Long-video, accessibility,
-HDR color conversion and broad driver coverage need further validation. Automatic
-encoder selection tests a few frames before rendering; later failures are still possible.
-
-No personal videos or local model/environment overrides are included in the release
-payload. The release builder uses an allowlist. Setup downloads dependencies directly
-from publishers and checks pinned runtime/package hashes.
-
-
-
+Processing estimates are approximate. Censored preview prepares a cached media
+copy using the export filters; it is not live filtering as regions are dragged.
+Speech recognition and translation require review. ASS import retains text and
+timing, not complex styles/effects. Censor transcripts and subtitle projects remain
+separate. See README.md for workflows and format details.

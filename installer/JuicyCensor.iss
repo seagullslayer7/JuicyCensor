@@ -1,3 +1,6 @@
+#ifndef ProductVersion
+  #define ProductVersion "3.0.0"
+#endif
 #ifndef PayloadDir
   #error PayloadDir must point to the staged application folder
 #endif
@@ -7,12 +10,12 @@
 [Setup]
 AppId={{87EB6B6A-613E-4D53-8E9F-CAB413902000}
 AppName=JuicyCensor
-AppVersion=2.1.0
+AppVersion={#ProductVersion}
 AppPublisher=JuicyCensor
 AppPublisherURL=https://github.com/seagullslayer7/JuicyCensor
 AppSupportURL=https://github.com/seagullslayer7/JuicyCensor/issues
 AppUpdatesURL=https://github.com/seagullslayer7/JuicyCensor/releases
-DefaultDirName={localappdata}\Programs\JuicyCensor 2.0
+DefaultDirName={localappdata}\Programs\JuicyCensor
 DefaultGroupName=JuicyCensor
 DisableDirPage=no
 DisableProgramGroupPage=yes
@@ -21,7 +24,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
 OutputDir={#ReleaseDir}
-OutputBaseFilename=JuicyCensor-2.1.0-Windows-x64-Setup
+OutputBaseFilename=JuicyCensor-{#ProductVersion}-Windows-x64-Setup
 SetupIconFile=..\assets\orange.ico
 UninstallDisplayIcon={app}\JuicyCensor.exe
 LicenseFile=..\LICENSE

@@ -5,6 +5,7 @@ venv/
 vendor/
 runtime/
 runtime.local.json
+appearance.json
 cache/
 logs/
 outputs/

@@ -33,7 +33,7 @@ def configure_runtime():
         location = root / "cache" / folder
         location.mkdir(parents=True, exist_ok=True)
         os.environ.setdefault(variable, str(location))
-    paths = [root / "tools" / "ffmpeg-shared" / "bin",
+    paths = [Path(local.get("ffmpeg_dir", str(root / "tools" / "ffmpeg-shared" / "bin"))),
              Path(sys.prefix) / "Lib" / "site-packages" / "torch" / "lib"]
     for path in reversed(paths):
         if path.is_dir():

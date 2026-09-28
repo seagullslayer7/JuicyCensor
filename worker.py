@@ -70,6 +70,9 @@ def validate_events(raw: list, duration: float):
 
 
 def run_job(job: dict):
+    if job['action'].startswith('subtitle_'):
+        from subtitle_worker import run_subtitle_job
+        return run_subtitle_job(job, emit)
     import autocensor as app
     from transcription import vulkan_devices
     action = job['action']
@@ -103,6 +106,7 @@ def run_job(job: dict):
             raise ValueError('Video has no valid duration.')
         emit('estimate', duration=duration, backend=config['backend'])
         lists = [app.read_entries(ROOT / 'banned_words.txt'), app.read_entries(ROOT / 'banned_phrases.txt')]
+        config['text_matching_schema'] = 2
         analysis_config = {key: value for key, value in config.items() if not key.startswith('export_') and key not in ('censor_mode', 'beep_volume', 'beep_frequency', 'beep_file')}
         analysis_key = hashlib.sha256(json.dumps([analysis_config, lists], sort_keys=True).encode()).hexdigest()[:16]
         state_path = ROOT / 'cache' / 'reviews' / f'{fingerprint}_{analysis_key}.json'

@@ -19,7 +19,7 @@ the licenses of its dependencies.
   wheel built from the hash-verified PyPI source archive, to avoid a compiler/build
   dependency on end-user PCs. Its license is included in the wheel and `licenses`.
   Source: https://pypi.org/project/antlr4-python3-runtime/4.9.3/#files .
-- The frozen interpreter is CPython 3.12.10 (PSF license, included). PyInstaller
+- The frozen interpreter is CPython 3.12.14 (PSF license, included). PyInstaller
   bootloader licensing includes its distribution exception:
   https://pyinstaller.org/en/stable/license.html .
 

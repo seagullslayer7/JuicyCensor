@@ -5,6 +5,14 @@ import time
 
 def initial_budget(action, duration, config, backend):
     duration = max(0., float(duration))
+    if action in ('subtitle_transcribe', 'subtitle_translate'):
+        config = dict(config, model=config.get('subtitle_model', 'large-v3'), vulkan_model=config.get('subtitle_vulkan_model', 'large-v3'))
+        budget = initial_budget('analyze', duration, config, backend)
+        budget.pop('align', None); budget.pop('align_load', None)
+        return budget
+    if action == 'subtitle_export':
+        return initial_budget('render', duration, dict(config, export_encoder='libx264'), backend)
+    if action == 'subtitle_waveform': return {'prepare': max(3., duration*.02), 'finish': 1.}
     if action == 'analyze':
         model = str(config.get('vulkan_model' if backend == 'vulkan' else 'model', 'base.en'))
         size = next((name for name in ('large', 'medium', 'small', 'base', 'tiny') if model.startswith(name)), 'large')
