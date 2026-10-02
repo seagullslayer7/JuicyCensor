@@ -9,10 +9,12 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
         with:
-          python-version: '3.12.14'
+          # Use an available Windows build; the app's processing runtime is
+          # independently pinned and installed by uv from release-manifest.json.
+          python-version: '3.12'
       - name: Install GUI build dependencies
         run: python -m pip install PyInstaller==6.21.0 -r requirements-ui.txt
       - name: Fetch verified build helpers
@@ -33,7 +35,7 @@ jobs:
           subprocess.run([str(root/'inno.exe'), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/PORTABLE=1', '/NOICONS', '/DIR='+str(root/'inno')], check=True)
       - name: Build distributions
         run: python build_release.py --iscc inno/ISCC.exe --output release
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.1
         with:
           name: JuicyCensor-Windows-release
           path: |
